@@ -1,0 +1,1 @@
+"""Gateway — WebSocket control plane."""
