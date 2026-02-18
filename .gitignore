@@ -27,5 +27,7 @@ build/
 .coverage
 htmlcov/
 
-# Memory index
-.memory_index.json
+# Runtime data
+projects/
+config/
+reproduce_output/
