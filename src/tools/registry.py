@@ -7,6 +7,7 @@ to OpenAI-compatible function calling format for the LLM.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
@@ -15,6 +16,9 @@ from typing import Any, Callable, Coroutine
 from src.providers.base import ToolCall, ToolDefinition
 
 logger = logging.getLogger(__name__)
+
+# Default timeout for tool execution (5 minutes)
+TOOL_TIMEOUT = 300
 
 
 # Type for tool functions
@@ -59,12 +63,13 @@ class ToolRegistry:
             for tool in self._tools.values()
         ]
 
-    async def execute(self, tool_call: ToolCall) -> str:
+    async def execute(self, tool_call: ToolCall, timeout: int = TOOL_TIMEOUT) -> str:
         """
         Execute a tool call and return the result as a string.
 
         Args:
             tool_call: The tool call from the LLM.
+            timeout: Maximum execution time in seconds (default: 300).
 
         Returns:
             The tool result as a string.
@@ -77,9 +82,12 @@ class ToolRegistry:
             logger.info(f"Executing tool: {tool_call.name} with args: {tool_call.arguments}")
             result = tool.func(**tool_call.arguments)
 
-            # Handle async functions
+            # Handle async functions with timeout
             if inspect.isawaitable(result):
-                result = await result
+                try:
+                    result = await asyncio.wait_for(result, timeout=timeout)
+                except asyncio.TimeoutError:
+                    return f"❌ Tool '{tool_call.name}' timed out after {timeout}s"
 
             # Ensure result is a string
             if not isinstance(result, str):
@@ -92,6 +100,8 @@ class ToolRegistry:
 
             return result
 
+        except asyncio.TimeoutError:
+            return f"❌ Tool '{tool_call.name}' timed out after {timeout}s"
         except Exception as e:
             error_msg = f"❌ Tool '{tool_call.name}' failed: {type(e).__name__}: {e}"
             logger.error(error_msg)
@@ -129,11 +139,31 @@ def create_default_registry() -> ToolRegistry:
     from src.tools.filesystem import register_filesystem_tools
     from src.tools.web_search import register_web_search_tools
     from src.tools.cron import register_cron_tools
+    # New tools
+    from src.tools.macos import register_macos_tools
+    from src.tools.media import register_media_tools
+    from src.tools.desktop import register_desktop_tools
+    from src.tools.system_pkg import register_package_tools
+    # AI-powered extraction and browser tools
+    from src.tools.extraction import register_extraction_tools
+    from src.tools.browser_use import register_browser_use_tools
+    # Document ingestion and knowledge base tools
+    from src.tools.documents import register_document_tools
 
     registry = ToolRegistry()
     register_shell_tools(registry)
     register_filesystem_tools(registry)
     register_web_search_tools(registry)
     register_cron_tools(registry)
+    # Register new tools
+    register_macos_tools(registry)
+    register_media_tools(registry)
+    register_desktop_tools(registry)
+    register_package_tools(registry)
+    # Register AI-powered tools
+    register_extraction_tools(registry)
+    register_browser_use_tools(registry)
+    # Register document/knowledge base tools
+    register_document_tools(registry)
 
     return registry
