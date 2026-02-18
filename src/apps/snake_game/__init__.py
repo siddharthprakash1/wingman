@@ -1,0 +1,3 @@
+"""
+Snake Game Application.
+"""
