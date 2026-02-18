@@ -1,151 +1,286 @@
-# 🦞 Wingman
+# Wingman 🦞
 
-> **Your Local, Agentic AI Co-Pilot.**
+**Personal AI Assistant - OpenClaw-style Architecture**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+A self-hosted, privacy-first AI assistant that runs on your own hardware. Connect through messaging apps you already use, with full control over your data.
 
-**Wingman** is a powerful, locally-hosted AI assistant designed for developers. It combines the flexibility of local LLMs (like **Kimi K2.5** via Ollama) with a sophisticated multi-agent framework capable of planning, coding, and reviewing complex software projects autonomously.
+## Features
 
-Think of it as an open-source, local alternative to Devin or Cursor's Agent mode, but fully under your control.
+- **Multi-Provider LLM Support**: Gemini, OpenAI, Kimi K2.5, Ollama (local), OpenRouter
+- **Multi-Channel Messaging**: Telegram, Discord, WebChat UI
+- **Specialized Agents**: Research, Coding, Writing, Data Analysis, System Admin
+- **Persistent Memory**: Session history, daily logs, long-term memory with semantic search
+- **Skills System**: Modular task-specific capabilities
+- **Plugin Architecture**: Extensible channels, tools, providers, and agents
 
----
+## Architecture
 
-## ✨ Features
-
-### 🧠 **Multi-Agent Project Mode**
-Wingman doesn't just chat; it builds. In **Project Mode**, a team of specialized agents works together:
--   **Planner**: Breaks down your request into a step-by-step implementation plan.
--   **Engineer**: Writes the actual code, executing terminal commands and file operations.
--   **Reviewer**: Validates the code, runs linters, and ensures quality before completion.
-
-### 🏠 **100% Local & Private**
--   **Local Inference**: Powered by **Ollama** ensures your code never leaves your machine unless you want it to.
--   **Cloud Option**: Seamlessly switch to **Gemini 2.5 Flash** (Free Tier) or **Moonshot AI** for massive context windows (up to 256k tokens).
-
-### 💬 **Multi-Channel Interface**
-Interact with Wingman wherever you are:
--   **WebChat**: A beautiful, modern React-like interface with markdown support, code highlighting, and project visualization.
--   **CLI**: Quick interactions directly from your terminal (`wingman chat`).
--   **Discord & Telegram**: Connect Wingman to your favorite messaging platforms.
-
-### 🛠️ **Extensible Toolset**
-Wingman comes equipped with a powerful suite of tools:
--   **File System**: Read, write, and edit files safely.
--   **Terminal**: Execute shell commands.
--   **Web Search**: Browse the web for real-time information (DuckDuckGo/Brave).
--   **Browser**: Headless browser automation for scraping and interaction.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
--   **Python 3.11+**
--   **Ollama** (recommended for local inference)
-    -   Run: `ollama pull kimi-k2.5:cloud` (or your preferred model)
-
-### Installation
-
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/siddharthprakash1/wingman.git
-    cd wingman
-    ```
-
-2.  **Install dependencies**:
-    ```bash
-    pip install -e .
-    ```
-
-3.  **Initialize Configuration**:
-    ```bash
-    wingman onboard
-    ```
-    This will create `~/.wingman/config.json` and set up your workspace.
-
----
-
-## 📖 Usage
-
-### Start the Gateway (Web UI + API)
-
-The Gateway is the brain of Wingman, hosting the WebChat and handling API requests.
-
-```bash
-wingman gateway
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Gateway (WebSocket)                     │
+│                     127.0.0.1:18789                         │
+├─────────────┬─────────────┬─────────────┬──────────────────┤
+│   WebChat   │   Telegram  │   Discord   │      CLI         │
+│     UI      │    Bot      │    Bot      │                  │
+└──────┬──────┴──────┬──────┴──────┬──────┴────────┬─────────┘
+       │             │             │               │
+       └─────────────┴─────────────┴───────────────┘
+                            │
+                    ┌───────┴───────┐
+                    │  Agent Router  │
+                    └───────┬───────┘
+                            │
+       ┌────────────────────┼────────────────────┐
+       │                    │                    │
+   ┌───┴───┐           ┌────┴────┐          ┌───┴───┐
+   │Research│           │  Coder  │          │Writer │ ...
+   │ Agent  │           │  Agent  │          │ Agent │
+   └───┬───┘           └────┬────┘          └───┬───┘
+       │                    │                    │
+       └────────────────────┼────────────────────┘
+                            │
+                    ┌───────┴───────┐
+                    │  Tool Registry │
+                    │  (bash, files, │
+                    │   web, etc.)   │
+                    └───────────────┘
 ```
 
-> **Access the UI**: Open [http://localhost:18789](http://localhost:18789) in your browser.
+## Quick Start
 
-### CLI Chat
-
-Need a quick answer? Use the CLI:
+### 1. Install
 
 ```bash
-wingman chat "How do I reverse a binary tree in Python?"
+# Clone the repository
+git clone https://github.com/yourusername/wingman.git
+cd wingman
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+
+# Install dependencies
+pip install -e .
 ```
 
----
+### 2. Setup
 
-## ⚙️ Configuration
+```bash
+# Interactive setup wizard
+python -m src.main onboard
+```
 
-Your configuration lives in `~/.wingman/config.json`. You can easily switch models, enable/disable tools, and configure API keys.
+This will:
+- Configure your LLM provider (Gemini, OpenAI, Kimi, etc.)
+- Initialize the workspace at `~/.wingman/workspace/`
+- Create default configuration
 
-**Example `config.json`:**
+### 3. Run
+
+```bash
+# Start the gateway server (includes WebChat UI)
+python -m src.main gateway
+
+# Open http://127.0.0.1:18789 in your browser
+```
+
+Or chat directly from the terminal:
+
+```bash
+# Single message
+python -m src.main agent -m "What's the weather like?"
+
+# Interactive mode
+python -m src.main agent
+```
+
+## Configuration
+
+Configuration is stored in `~/.wingman/config.json`:
 
 ```json
 {
   "agents": {
     "defaults": {
-      "model": "ollama/kimi-k2.5:cloud",
+      "model": "gemini/gemini-2.5-flash",
+      "max_tokens": 8192,
       "temperature": 0.7
     }
   },
   "providers": {
-    "kimi": { "api_key": "sk-..." },
-    "gemini": { "api_key": "..." }
+    "gemini": {
+      "api_key": "your-api-key"
+    }
   },
-  "tools": {
-    "web": { "search": { "provider": "duckduckgo" } }
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "token": ""
+    }
   }
 }
 ```
 
----
+### Provider Options
 
-## 🏗️ Architecture
+| Provider | Model Example | Free Tier |
+|----------|--------------|-----------|
+| Gemini | `gemini/gemini-2.5-flash` | Yes |
+| OpenAI | `openai/gpt-4o` | No |
+| Kimi | `kimi/kimi-k2.5` | Yes |
+| Ollama | `ollama/llama3` | Yes (local) |
+| OpenRouter | `openrouter/anthropic/claude-3-5-sonnet` | Pay-per-use |
 
-Wingman uses a **Hub-and-Spoke** architecture:
+## Workspace Layout
 
-```mermaid
-graph TD
-    User[User] -->|Web/CLI/Discord| Gateway[Gateway Server]
-    Gateway --> Router[Message Router]
-    Router --> Orchestrator[Project Orchestrator]
-    
-    subgraph "Agent Runtime"
-        Orchestrator --> Planner[Planner Agent]
-        Orchestrator --> Engineer[Engineer Agent]
-        Orchestrator --> Reviewer[Reviewer Agent]
-    end
-    
-    subgraph "Tools & Memory"
-        Engineer --> Tools[Files, Shell, Browser]
-        Planner --> Memory[Long-Term Memory]
-    end
-    
-    Tools --> Workspace[Local Workspace]
+```
+~/.wingman/
+├── config.json          # Main configuration
+├── workspace/
+│   ├── sessions/        # Chat session history
+│   ├── memory/          # Daily logs
+│   ├── skills/          # Custom skills
+│   ├── cron/            # Scheduled tasks
+│   ├── IDENTITY.md      # Who the assistant is
+│   ├── SOUL.md          # Personality/tone
+│   ├── AGENTS.md        # Behavioral rules
+│   ├── USER.md          # User preferences (learned)
+│   ├── MEMORY.md        # Long-term facts
+│   └── TOOLS.md         # Tool usage conventions
+└── extensions/          # Plugins
 ```
 
+## Commands
+
+```bash
+# Setup
+wingman onboard          # Interactive setup wizard
+
+# Server
+wingman gateway          # Start the gateway server
+wingman gateway -p 8080  # Custom port
+
+# Chat
+wingman agent            # Interactive mode
+wingman agent -m "Hi"    # Single message
+wingman agent --stream   # Stream output
+
+# Channels
+wingman channels list    # List configured channels
+wingman channels login telegram  # Configure Telegram
+
+# Skills
+wingman skills list      # List available skills
+wingman skills create my-skill  # Create new skill
+
+# Memory
+wingman memory search "topic"  # Search memory
+wingman memory rebuild   # Rebuild search index
+
+# Health
+wingman doctor           # Check system health
+```
+
+## Agents
+
+### Built-in Agents
+
+| Agent | Capabilities | Description |
+|-------|-------------|-------------|
+| **Research** | Web search, URL fetching | Information gathering and synthesis |
+| **Engineer** | Code, files, shell | Software development |
+| **Reviewer** | Code review | Quality assurance |
+| **Writer** | Content creation | Documentation, articles, emails |
+| **Data** | Analysis, visualization | Data processing and insights |
+| **System** | Shell, packages | System administration |
+| **Browser** | Web automation | Form filling, scraping |
+| **Planner** | Task decomposition | Breaking down complex tasks |
+
+### Agent Routing
+
+Tasks are automatically routed to the most appropriate agent:
+
+```
+"Research Python best practices" → Research Agent
+"Write a function to sort arrays" → Engineer Agent
+"Review this code for bugs" → Reviewer Agent
+"Draft an email to the team" → Writer Agent
+```
+
+## Skills
+
+Skills are modular capabilities that can be activated on demand:
+
+```
+~/.wingman/workspace/skills/
+├── research/
+│   └── SKILL.md
+├── coding/
+│   └── SKILL.md
+└── writing/
+    └── SKILL.md
+```
+
+Create a skill:
+
+```bash
+wingman skills create my-skill
+```
+
+Skill format (`SKILL.md`):
+```markdown
+---
+description: My custom skill
+triggers: keyword1, keyword2
+tools: bash, read_file
 ---
 
-## 🤝 Contributing
+# Skill Instructions
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Detailed instructions for the agent when this skill is active.
+```
 
-## 📄 License
+## Security
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Session Isolation
+
+- **main**: Full access (CLI/local)
+- **dm:\<channel\>:\<user\>**: Isolated per user
+- **group:\<channel\>:\<group\>**: Isolated per group with restricted tools
+
+### Tool Sandboxing
+
+- Tool allowlists/denylists per session type
+- Docker isolation for untrusted sessions (coming soon)
+- Require approval for destructive operations
+
+## Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Type checking
+mypy src/
+
+# Linting
+ruff check src/
+
+# Format
+black src/
+```
+
+## Contributing
+
+Contributions welcome! Please read the contributing guidelines first.
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Acknowledgments
+
+Inspired by [OpenClaw](https://github.com/openclaw/openclaw) and [PicoClaw](https://github.com/sipeed/picoclaw).

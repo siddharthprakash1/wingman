@@ -139,7 +139,9 @@ class AgentSession:
         Returns:
             The agent's text response.
         """
-        # Log user message
+        # Log user message (with context detection)
+        if "[Context:" in user_input:
+            logger.info(f"Received message with knowledge base context: {user_input[:300]}...")
         self.transcript.log_user_message(user_input, channel)
         self.memory.append_daily_log(f"User ({channel}): {user_input[:200]}")
 

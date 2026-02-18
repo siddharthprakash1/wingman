@@ -12,6 +12,23 @@ from src.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
+# Directories that should never be accessed
+BLOCKED_PATHS = {
+    '/etc/passwd', '/etc/shadow', '/etc/sudoers',
+    '/root', '/var/log/auth.log',
+}
+
+def _is_safe_path(path: Path) -> bool:
+    """Check if path is safe to access (no sensitive system files)."""
+    resolved = str(path.resolve())
+    
+    # Block absolute paths to sensitive locations
+    for blocked in BLOCKED_PATHS:
+        if resolved.startswith(blocked):
+            return False
+    
+    return True
+
 
 async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
     """
@@ -24,6 +41,8 @@ async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
     """
     try:
         p = Path(path).expanduser().resolve()
+        if not _is_safe_path(p):
+            return f"❌ Access denied: {path}"
         if not p.exists():
             return f"❌ File not found: {path}"
         if not p.is_file():
@@ -52,6 +71,8 @@ async def write_file(path: str, content: str) -> str:
     """
     try:
         p = Path(path).expanduser().resolve()
+        if not _is_safe_path(p):
+            return f"❌ Access denied: {path}"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         return f"✅ Wrote {len(content)} bytes to {p}"

@@ -18,6 +18,7 @@ from src.providers.base import LLMProvider, LLMResponse, Message, ToolDefinition
 from src.providers.gemini import GeminiProvider
 from src.providers.kimi import KimiProvider
 from src.providers.ollama import OllamaProvider
+from src.providers.openai import OpenAIProvider
 from src.providers.openrouter import OpenRouterProvider
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,26 @@ class ProviderManager:
                 else "",
             )
 
+        # OpenAI
+        if cfg.openai.api_key:
+            self._providers["openai"] = OpenAIProvider(
+                api_key=cfg.openai.api_key,
+                api_base=cfg.openai.api_base,
+                model=self.settings.get_model_name()
+                if self.settings.get_model_provider() == "openai"
+                else cfg.openai.model,
+            )
+
+        # OpenAI Chat (Weak/Cheap model)
+        if cfg.openai_chat.api_key:
+            self._providers["openai_chat"] = OpenAIProvider(
+                api_key=cfg.openai_chat.api_key,
+                api_base=cfg.openai_chat.api_base,
+                model=self.settings.get_model_name()
+                if self.settings.get_model_provider() == "openai_chat"
+                else cfg.openai_chat.model,
+            )
+
     def get_provider(self, provider_name: str | None = None) -> LLMProvider:
         """
         Get a specific provider by name, or the default.
@@ -91,7 +112,7 @@ class ProviderManager:
             return self._providers[default_provider]
 
         # Fallback priority
-        for name in ["kimi", "gemini", "ollama", "openrouter"]:
+        for name in ["kimi", "gemini", "ollama", "openai", "openai_chat", "openrouter"]:
             if name in self._providers:
                 logger.info(f"Falling back to {name} provider")
                 return self._providers[name]
@@ -102,7 +123,8 @@ class ProviderManager:
             "  1. Set providers.kimi.api_key (get one at https://platform.moonshot.cn)\n"
             "  2. Set providers.gemini.api_key (free at https://aistudio.google.com)\n"
             "  3. Install Ollama (https://ollama.com) and run: ollama pull deepseek-r1:14b\n"
-            "  4. Set providers.openrouter.api_key (https://openrouter.ai)"
+            "  4. Set providers.openai.api_key\n"
+            "  5. Set providers.openrouter.api_key (https://openrouter.ai)"
         )
 
     async def get_healthy_provider(self) -> LLMProvider:
@@ -113,7 +135,7 @@ class ProviderManager:
         """
         default_provider = self.settings.get_model_provider()
         priority = [default_provider] + [
-            p for p in ["gemini", "ollama", "openrouter"] if p != default_provider
+            p for p in ["gemini", "ollama", "openai", "openrouter"] if p != default_provider
         ]
 
         for name in priority:

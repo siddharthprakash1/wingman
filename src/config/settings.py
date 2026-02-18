@@ -54,6 +54,18 @@ class OpenRouterProvider(BaseModel):
     api_base: str = "https://openrouter.ai/api/v1"
 
 
+class OpenAIProviderConfig(BaseModel):
+    api_key: str = ""
+    api_base: str = "https://api.openai.com/v1"
+    model: str = "gpt-4o"
+
+
+class OpenAIChatProviderConfig(BaseModel):
+    api_key: str = ""
+    api_base: str = "https://api.openai.com/v1"
+    model: str = "gpt-4o-mini"
+
+
 class KimiProviderConfig(BaseModel):
     api_key: str = ""
     api_base: str = "https://api.moonshot.ai/v1"
@@ -65,6 +77,8 @@ class ProvidersConfig(BaseModel):
     gemini: GeminiProvider = Field(default_factory=GeminiProvider)
     ollama: OllamaProvider = Field(default_factory=OllamaProvider)
     openrouter: OpenRouterProvider = Field(default_factory=OpenRouterProvider)
+    openai: OpenAIProviderConfig = Field(default_factory=OpenAIProviderConfig)
+    openai_chat: OpenAIChatProviderConfig = Field(default_factory=OpenAIChatProviderConfig)
 
 
 class WebSearchConfig(BaseModel):

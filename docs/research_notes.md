@@ -2,11 +2,12 @@
 
 ## Overview
 
-**LangExtract** is an open-source Python library developed by Google for extracting structured information from unstructured text documents using Large Language Models (LLMs). It provides precise source grounding, reliable structured outputs, and interactive visualization capabilities.
+**LangExtract** is an open-source Python library developed by Google for extracting structured information from unstructured text using Large Language Models (LLMs). It provides precise source grounding, schema-based extraction, and interactive visualization capabilities.
 
 - **GitHub Repository**: https://github.com/google/langextract
 - **PyPI Package**: https://pypi.org/project/langextract/
-- **Current Version**: 1.1.1 (as of November 27, 2025)
+- **Official Documentation**: https://developers.google.com/health-ai-developer-foundations/libraries/langextract
+- **Latest Version**: 1.1.1 (as of Nov 27, 2025)
 - **License**: Apache-2.0
 - **Python Requirements**: Python >= 3.10
 
@@ -16,421 +17,330 @@
 
 ### 1. Structured Data Extraction
 - Extracts structured information from unstructured text based on user-defined instructions
-- Uses few-shot examples to guide the extraction process
-- Supports domain-specific extraction without model fine-tuning
+- Uses few-shot prompting with examples to guide the LLM
+- Enforces consistent output schemas using controlled generation (for supported models like Gemini)
 
 ### 2. Schema-Based Extraction
-- Enforces consistent output schemas based on few-shot examples
-- Leverages "Controlled Generation" in supported models (Gemini) for structured outputs
-- Supports both JSON and YAML output formats
+- Define extraction tasks using prompts and examples
+- No model fine-tuning required - works with few-shot examples
+- Supports custom entity types and attributes
+- Schema enforcement through controlled generation (Gemini models)
 
 ### 3. Source Grounding
-- Maps every extraction to its exact character offsets in the source text
+- Maps every extraction to exact character offsets in source text
 - Enables visual highlighting for traceability and verification
-- Supports fuzzy matching and alignment status tracking
+- Provides `char_interval` with `start_pos` and `end_pos` for each extraction
 
 ### 4. Long Document Processing
-- Optimized for long documents using text chunking strategy
-- Parallel processing with configurable workers
-- Multiple extraction passes for improved recall
-- Context window management for cross-chunk coreference resolution
+- Optimized for long documents using:
+  - Text chunking strategy
+  - Parallel processing (`max_workers` parameter)
+  - Multiple extraction passes (`extraction_passes` parameter)
+- Overcomes "needle-in-a-haystack" challenges in large contexts
 
 ### 5. Interactive Visualization
 - Generates self-contained interactive HTML files
-- Visualizes extracted entities in their original context
+- Visualizes extracted entities in original context
 - Supports thousands of annotations
-- Works in Jupyter/Colab environments
+- Works in Jupyter/Colab or as standalone HTML
 
 ---
 
-## Key Classes and Components
+## LLM Integration
 
-### Core Data Classes (`langextract.core.data`)
+### Supported Model Providers
 
-#### `Extraction`
-Represents an extracted entity from text.
+| Provider | Model ID Example | Requirements |
+|----------|-----------------|--------------|
+| **Google Gemini** (default) | `gemini-2.5-flash`, `gemini-2.5-pro` | `LANGEXTRACT_API_KEY` or `GOOGLE_API_KEY` |
+| **Google Vertex AI** | `gemini-2.5-flash` | Service account auth, project ID |
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini` | `OPENAI_API_KEY`, `pip install langextract[openai]` |
+| **Ollama (Local)** | `gemma2:2b` | Ollama server running locally |
+| **Custom Providers** | Any | Plugin system available |
 
+### Model Recommendations
+- **Default**: `gemini-2.5-flash` - best balance of speed, cost, and quality
+- **Complex tasks**: `gemini-2.5-pro` - deeper reasoning capabilities
+- **Production**: Tier 2 Gemini quota recommended for throughput
+
+---
+
+## Key Classes and Data Structures
+
+### Core Classes
+
+#### `lx.data.ExampleData`
+Represents a training example for few-shot prompting.
 ```python
-@dataclasses.dataclass
-class Extraction:
-    extraction_class: str          # Class/category of extraction
-    extraction_text: str           # The extracted text
-    char_interval: CharInterval    # Position in source text
-    alignment_status: AlignmentStatus  # Match quality
-    extraction_index: int          # Order in extraction list
-    group_index: int               # Grouping index
-    description: str               # Description of extraction
-    attributes: dict               # Additional attributes
+ExampleData(
+    text="sample text to extract from",
+    extractions=[Extraction(...), ...]
+)
 ```
 
-#### `Document`
-Represents input text/document for processing.
-
+#### `lx.data.Extraction`
+Represents a single extracted entity.
 ```python
-@dataclasses.dataclass
-class Document:
-    text: str                      # Raw text content
-    document_id: str               # Unique identifier (auto-generated)
-    additional_context: str        # Context for prompt instructions
-    tokenized_text: TokenizedText  # Computed tokenization
+Extraction(
+    extraction_class="entity_type",      # Category/type of extraction
+    extraction_text="exact text",        # Verbatim text from source
+    attributes={"key": "value"},         # Additional context/metadata
+    char_interval=CharInterval(...)      # Source location (auto-populated)
+)
 ```
 
-#### `AnnotatedDocument`
-Represents a document with extracted information.
-
+#### `lx.data.CharInterval`
+Represents character offsets for source grounding.
 ```python
-@dataclasses.dataclass
-class AnnotatedDocument:
-    document_id: str
-    extractions: list[Extraction]
-    text: str
+CharInterval(
+    start_pos=0,    # Start character position
+    end_pos=10      # End character position
+)
 ```
 
-#### `ExampleData`
-Provides few-shot examples for guiding extraction.
+### Main Function
 
-```python
-@dataclasses.dataclass
-class ExampleData:
-    text: str                      # Input text example
-    extractions: list[Extraction]  # Expected extractions
-```
-
-#### `CharInterval`
-Represents character position in source text.
-
-```python
-@dataclasses.dataclass
-class CharInterval:
-    start_pos: int | None          # Start position (inclusive)
-    end_pos: int | None            # End position (exclusive)
-```
-
-### Main API Functions
-
-#### `extract()`
+#### `lx.extract()`
 Primary extraction function.
-
 ```python
-lx.extract(
-    text_or_documents: str | Iterable[Document],
-    prompt_description: str,           # Instructions for extraction
-    examples: Sequence[ExampleData],    # Few-shot examples
-    model_id: str = "gemini-2.5-flash", # Model to use
-    api_key: str | None = None,         # API key (or env var)
-    max_char_buffer: int = 1000,        # Chunk size
-    extraction_passes: int = 1,         # Number of passes
-    max_workers: int = 10,              # Parallel workers
-    temperature: float | None = None,   # Sampling temperature
-    use_schema_constraints: bool = True, # Structured output
-    fence_output: bool | None = None,   # Markdown fencing
-    # ... additional parameters
-) -> AnnotatedDocument | list[AnnotatedDocument]
+result = lx.extract(
+    text_or_documents=input_text,       # Text, URL, or list of documents
+    prompt_description=prompt,          # Extraction instructions
+    examples=examples,                  # List of ExampleData objects
+    model_id="gemini-2.5-flash",        # Model identifier
+    api_key=None,                       # Optional API key
+    extraction_passes=1,                # Number of extraction passes
+    max_workers=1,                      # Parallel workers
+    max_char_buffer=3000,               # Chunk size for long docs
+    language_model_params={},           # Provider-specific params
+    fence_output=False,                 # For non-Gemini models
+    use_schema_constraints=True         # Schema enforcement (Gemini only)
+)
 ```
 
-#### `visualize()`
-Generates interactive HTML visualization.
+### I/O Functions
 
+#### `lx.io.save_annotated_documents()`
+Save extraction results to JSONL format.
 ```python
-lx.visualize(
-    jsonl_path: str  # Path to JSONL file with extraction results
-) -> str | HTML    # HTML content
+lx.io.save_annotated_documents(
+    [result],
+    output_name="results.jsonl",
+    output_dir="."
+)
 ```
 
-### Provider System
-
-LangExtract uses a provider-based architecture for LLM support:
-
-#### Built-in Providers
-
-1. **Gemini Provider** (`langextract.providers.gemini.GeminiLanguageModel`)
-   - Default provider for Google Gemini models
-   - Supports both AI Studio API and Vertex AI
-   - Supports structured output with schema constraints
-   - Supports batch processing via Vertex AI Batch API
-
-2. **OpenAI Provider** (`langextract.providers.openai.OpenAILanguageModel`)
-   - Supports GPT models (gpt-4o, etc.)
-   - Requires `pip install langextract[openai]`
-   - Requires `fence_output=True` and `use_schema_constraints=False`
-
-3. **Ollama Provider** (`langextract.providers.ollama.OllamaLanguageModel`)
-   - Supports local LLMs via Ollama
-   - No API key required
-   - Default URL: http://localhost:11434
-
-#### Provider Registration
-Providers are registered via entry points in `pyproject.toml`:
-```toml
-[project.entry-points."langextract.providers"]
-gemini = "langextract.providers.gemini:GeminiLanguageModel"
-ollama = "langextract.providers.ollama:OllamaLanguageModel"
-openai = "langextract.providers.openai:OpenAILanguageModel"
-```
-
-### Factory and Configuration
-
-#### `ModelConfig`
-Configuration for model instantiation.
-
+#### `lx.visualize()`
+Generate interactive HTML visualization.
 ```python
-@dataclasses.dataclass
-class ModelConfig:
-    model_id: str | None = None
-    provider: str | None = None
-    provider_kwargs: dict = field(default_factory=dict)
-```
-
-#### `create_model()`
-Factory function for creating model instances.
-
-```python
-from langextract.factory import create_model, ModelConfig
-
-model = create_model(ModelConfig(
-    model_id="gemini-2.5-flash",
-    provider_kwargs={"api_key": "..."}
-))
+html_content = lx.visualize("results.jsonl")
 ```
 
 ---
 
 ## Dependencies
 
-### Core Dependencies (from pyproject.toml)
-```
-absl-py>=1.0.0
-aiohttp>=3.8.0
-async_timeout>=4.0.0
-exceptiongroup>=1.1.0
-google-genai>=1.39.0          # Gemini API client
-google-cloud-storage>=2.14.0
-ml-collections>=0.1.0
-more-itertools>=8.0.0
-numpy>=1.20.0
-pandas>=1.3.0
-pydantic>=1.8.0               # Data validation
-python-dotenv>=0.19.0         # Environment variables
-PyYAML>=6.0
-regex>=2023.0.0
-requests>=2.25.0
-tqdm>=4.64.0                  # Progress bars
-typing-extensions>=4.0.0
-```
+### Core Dependencies (installed with `pip install langextract`)
+- Modern Python packaging with `pyproject.toml`
+- Google Generative AI client libraries (for Gemini)
 
 ### Optional Dependencies
-- **openai**: `openai>=1.50.0` (for OpenAI models)
-- **dev**: pyink, isort, pylint, pytype, tox, pre-commit
-- **test**: pytest, tomli
-- **notebook**: ipython, notebook
+```bash
+# OpenAI support
+pip install langextract[openai]
+
+# Development tools
+pip install langextract[dev]
+
+# Testing
+pip install langextract[test]
+
+# Jupyter/Notebook support
+pip install langextract[notebook]
+
+# All extras
+pip install langextract[all]
+```
 
 ---
 
 ## Authentication Requirements
 
-### API Keys
+### Environment Variables
 
-#### Gemini Models
-- Source: [Google AI Studio](https://aistudio.google.com/) or [Vertex AI](https://cloud.google.com/vertex-ai)
-- Environment Variable: `LANGEXTRACT_API_KEY` or `GEMINI_API_KEY`
-- Direct parameter: `api_key="..."` (not recommended for production)
+| Variable | Purpose | Required For |
+|----------|---------|--------------|
+| `LANGEXTRACT_API_KEY` | Primary API key | Gemini (AI Studio) |
+| `GOOGLE_API_KEY` | Alternative Google key | Gemini |
+| `OPENAI_API_KEY` | OpenAI access | OpenAI models |
+| `ANTHROPIC_API_KEY` | Anthropic access | Claude models |
 
-#### OpenAI Models
-- Source: [OpenAI Platform](https://platform.openai.com/)
-- Environment Variable: `OPENAI_API_KEY` or `LANGEXTRACT_API_KEY`
+### Authentication Methods
 
-#### Vertex AI (Enterprise)
-- Uses service account credentials
-- Requires: `project`, `location`, `vertexai=True`
-- No API key needed when using service accounts
+1. **Environment Variable** (Recommended for production)
+   ```bash
+   export LANGEXTRACT_API_KEY="your-api-key"
+   ```
 
-### Environment Configuration
+2. **.env File** (Recommended for development)
+   ```bash
+   # .env file
+   LANGEXTRACT_API_KEY=your-api-key-here
+   ```
 
-Recommended approach using `.env` file:
-```bash
-# .env file
-LANGEXTRACT_API_KEY=your-api-key-here
-```
+3. **Direct in Code** (Not recommended for production)
+   ```python
+   result = lx.extract(..., api_key="your-api-key")
+   ```
 
-Or environment variable:
-```bash
-export LANGEXTRACT_API_KEY="your-api-key-here"
-```
+4. **Vertex AI Service Account**
+   ```python
+   result = lx.extract(
+       ...,
+       language_model_params={
+           "vertexai": True,
+           "project": "your-project-id",
+           "location": "global"
+       }
+   )
+   ```
+
+5. **Ollama (No API Key)**
+   ```python
+   result = lx.extract(
+       ...,
+       model_id="gemma2:2b",
+       model_url="http://localhost:11434",
+       fence_output=False,
+       use_schema_constraints=False
+   )
+   ```
 
 ---
 
 ## Supported Output Formats
 
-### JSON (Default)
-- Primary format for structured extraction
-- Required for schema constraints with Gemini
-- Output saved as `.jsonl` files
+### 1. JSONL (JSON Lines)
+- Primary output format for extraction results
+- Each line contains one document's extraction data
+- Processable line-by-line for large datasets
 
-### YAML
-- Alternative format supported
-- Not compatible with Gemini schema constraints
+### 2. Interactive HTML
+- Self-contained visualization files
+- Color-coded entity highlighting
+- Click-through navigation
+- Attribute inspection
 
-### Format Selection
-```python
-lx.extract(
-    ...,
-    format_type=lx.data.FormatType.JSON  # or FormatType.YAML
-)
-```
+### 3. Python Objects
+- `AnnotatedDocument` objects with `extractions` property
+- Each extraction contains:
+  - `extraction_class`: Entity type
+  - `extraction_text`: Verbatim extracted text
+  - `attributes`: Dictionary of additional metadata
+  - `char_interval`: Source location (`start_pos`, `end_pos`)
 
----
-
-## Model Support
-
-### Recommended Models
-
-| Model | Provider | Use Case |
-|-------|----------|----------|
-| gemini-2.5-flash | Gemini | Default, balanced speed/cost/quality |
-| gemini-2.5-pro | Gemini | Complex tasks requiring reasoning |
-| gpt-4o | OpenAI | Alternative cloud model |
-| gemma2:2b | Ollama | Local inference, no API key |
-
-### Model Selection
-```python
-# Gemini (default)
-result = lx.extract(..., model_id="gemini-2.5-flash")
-
-# OpenAI
-result = lx.extract(..., model_id="gpt-4o")
-
-# Ollama (local)
-result = lx.extract(..., model_id="gemma2:2b", model_url="http://localhost:11434")
-```
+### 4. Pydantic Integration
+- Schema validation through controlled generation
+- Type-safe extraction outputs (Gemini models)
 
 ---
 
-## Advanced Features
+## Best Practices
 
-### Batch Processing (Vertex AI)
+### Few-Shot Prompting
+- Provide 1-3 high-quality examples
+- Use exact verbatim text in `extraction_text` (no paraphrasing)
+- List extractions in order of appearance
+- Include meaningful attributes for context
+
+### Long Document Processing
 ```python
+# For detailed extraction
 result = lx.extract(
     ...,
-    language_model_params={
-        "vertexai": True,
-        "batch": {"enabled": True}
-    }
+    extraction_passes=3,        # Multiple passes for recall
+    max_workers=20,             # Parallel processing
+    max_char_buffer=1000        # Smaller chunks for accuracy
 )
 ```
 
-### Multiple Extraction Passes
+### Production Settings
 ```python
+# For speed
 result = lx.extract(
     ...,
-    extraction_passes=3,  # Improves recall
-    max_workers=20        # Parallel processing
+    extraction_passes=1,
+    max_char_buffer=3000,
+    max_workers=30
 )
-```
 
-### Custom Tokenizer
-```python
-from langextract.core.tokenizer import RegexTokenizer
-
-tokenizer = RegexTokenizer()
-result = lx.extract(..., tokenizer=tokenizer)
-```
-
-### Prompt Validation
-```python
-from langextract import prompt_validation as pv
-
+# For accuracy
 result = lx.extract(
     ...,
-    prompt_validation_level=pv.PromptValidationLevel.WARNING,  # or .OFF, .ERROR
-    prompt_validation_strict=False
+    extraction_passes=5,
+    max_char_buffer=800,
+    max_workers=10
 )
 ```
 
 ---
 
-## Installation
+## Use Cases
 
-### From PyPI (Recommended)
-```bash
-pip install langextract
-```
+1. **Healthcare/Medical**
+   - Medication extraction from clinical notes
+   - Radiology report structuring (RadExtract)
+   - Entity relationship extraction
 
-### With OpenAI Support
-```bash
-pip install langextract[openai]
-```
+2. **Legal**
+   - Contract clause extraction
+   - Legal entity identification
 
-### Development Installation
-```bash
-git clone https://github.com/google/langextract.git
-cd langextract
-pip install -e ".[dev,test]"
-```
+3. **Finance**
+   - Financial metric extraction
+   - Entity relationship mapping
 
-### Docker
-```bash
-docker build -t langextract .
-docker run --rm -e LANGEXTRACT_API_KEY="your-api-key" langextract python your_script.py
-```
+4. **Customer Support**
+   - Ticket categorization
+   - Urgency detection
+   - Product issue extraction
 
----
-
-## Usage Example
-
-```python
-import langextract as lx
-import textwrap
-
-# 1. Define extraction instructions
-prompt = textwrap.dedent("""\
-    Extract characters, emotions, and relationships in order of appearance.
-    Use exact text for extractions. Do not paraphrase or overlap entities.
-    Provide meaningful attributes for each entity to add context.""")
-
-# 2. Provide few-shot examples
-examples = [
-    lx.data.ExampleData(
-        text="ROMEO. But soft! What light through yonder window breaks?",
-        extractions=[
-            lx.data.Extraction(
-                extraction_class="character",
-                extraction_text="ROMEO",
-                attributes={"emotional_state": "wonder"}
-            ),
-        ]
-    )
-]
-
-# 3. Run extraction
-input_text = "Lady Juliet gazed longingly at the stars..."
-result = lx.extract(
-    text_or_documents=input_text,
-    prompt_description=prompt,
-    examples=examples,
-    model_id="gemini-2.5-flash"
-)
-
-# 4. Save and visualize
-lx.io.save_annotated_documents([result], output_name="results.jsonl")
-html = lx.visualize("results.jsonl")
-```
+5. **HR/Recruiting**
+   - Resume parsing
+   - Employee information extraction
 
 ---
 
-## References
+## Limitations and Considerations
 
-1. **Official Documentation**: https://github.com/google/langextract/blob/main/README.md
-2. **PyPI Package**: https://pypi.org/project/langextract/
-3. **Google Developer Blog**: https://developers.googleblog.com/en/introducing-langextract-a-gemini-powered-information-extraction-library/
-4. **Research Paper**: https://doi.org/10.5281/zenodo.17015089
-5. **RadExtract Demo**: https://google-radextract.hf.space
+1. **Not an officially supported Google product** (subject to Apache 2.0 License)
+2. **Health AI Developer Foundations Terms of Use** apply for health-related applications
+3. **OpenAI models** require `fence_output=True` and `use_schema_constraints=False`
+4. **Local models** (Ollama) may have lower accuracy than cloud models
+5. **API costs** apply for cloud-based LLM usage
+6. **Rate limits** may apply depending on quota tier
 
 ---
 
-## Notes
+## Additional Resources
 
-- This is **not an officially supported Google product**
-- For health-related applications, subject to Health AI Developer Foundations Terms of Use
-- Gemini models have lifecycle with defined retirement dates - check model version documentation
-- Examples drive model behavior - ensure extraction_text is verbatim from example text
-- Each extraction_pass reprocesses tokens, increasing API costs
+- **GitHub Examples**: https://github.com/google/langextract/tree/main/examples
+- **RadExtract Demo**: https://google-radextract.hf.space
+- **Romeo & Juliet Example**: Full novel extraction demonstration
+- **Medication Extraction Example**: Healthcare use case
+- **Community Providers**: Extensible plugin system for custom models
+
+---
+
+## Research Summary
+
+LangExtract provides a powerful, flexible framework for structured information extraction from unstructured text. Its key differentiators are:
+
+1. **Source Grounding**: Every extraction mapped to exact source location
+2. **Schema Enforcement**: Controlled generation for reliable structured outputs
+3. **Few-Shot Learning**: No fine-tuning required, works with examples
+4. **Multi-Provider Support**: Gemini, OpenAI, Ollama, and custom providers
+5. **Production Ready**: Chunking, parallelization, and multiple extraction passes
+6. **Visualization**: Interactive HTML output for verification and review
+
+The library is particularly well-suited for domain-specific extraction tasks where traditional NLP libraries (spaCy, NLTK) fall short due to lack of context understanding or need for custom entity types.
