@@ -5,6 +5,7 @@ Project Manager (Orchestrator) - Coordinates the Coding Agent Framework.
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 from src.config.settings import get_settings
@@ -35,6 +36,7 @@ class ProjectManager:
         self.reviewer = ReviewerAgent()
         
         self.current_project: ProjectState | None = None
+        self.is_busy: bool = False  # Track if an agent is currently running
 
     def create_project(self, name: str, prompt: str) -> ProjectState:
         """Initialize a new project."""
@@ -61,6 +63,19 @@ class ProjectManager:
         self.current_project = ProjectState.load(state_path)
         logger.info(f"Loaded project: {name}")
         return self.current_project
+
+    def delete_project(self, name: str) -> None:
+        """Delete a project and its directory."""
+        project_dir = self.projects_dir / name
+        if project_dir.exists() and project_dir.is_dir():
+            shutil.rmtree(project_dir)
+            logger.info(f"Deleted project: {name}")
+            
+            # Clear current project if it was the one deleted
+            if self.current_project and self.current_project.name == name:
+                self.current_project = None
+        else:
+            logger.warning(f"Project not found for deletion: {name}")
 
     def list_projects(self) -> list[str]:
         """List all available projects."""

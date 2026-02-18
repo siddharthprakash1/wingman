@@ -66,6 +66,7 @@ class ProjectState:
             "name": self.name,
             "prompt": self.prompt,
             "workspace_path": self.workspace_path,
+            "phase": self.status.value,
             "status": self.status.value,
             "plan": [s.to_dict() for s in self.plan],
             "current_step_index": self.current_step_index,
