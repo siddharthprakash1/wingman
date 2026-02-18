@@ -1,59 +1,31 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environment
-.venv/
 venv/
-ENV/
-env/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
 
-# Editor/IDE
+# Config with API keys (user-specific)
+config.json
+~/.wingman/
+
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Environment Variables
-.env
-
-# MacOS
-.DS_Store
-
-# Logs
-*.log
-
-# Temp
-tmp/
-# Workspace (if local) - usually we want to keep the structure but not the data
-workspace/sessions/*
-workspace/memory/*.md
-!workspace/memory/templates/
-workspace/cron/*
-workspace/skills/*
-!workspace/skills/.gitkeep
+# Build
+dist/
+build/
+*.egg-info/
+.eggs/
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Memory index
+.memory_index.json
