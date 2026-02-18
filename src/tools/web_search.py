@@ -23,6 +23,8 @@ async def web_search(query: str, max_results: int = 5) -> str:
     Returns:
         Formatted search results.
     """
+    import asyncio
+    
     try:
         try:
             from ddgs import DDGS
@@ -30,13 +32,27 @@ async def web_search(query: str, max_results: int = 5) -> str:
             from duckduckgo_search import DDGS
 
         results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
-                results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("href", r.get("link", "")),
-                    "snippet": r.get("body", r.get("snippet", "")),
-                })
+        last_error = None
+        
+        # Retry up to 3 times with exponential backoff
+        for attempt in range(3):
+            try:
+                with DDGS() as ddgs:
+                    for r in ddgs.text(query, max_results=max_results):
+                        results.append({
+                            "title": r.get("title", ""),
+                            "url": r.get("href", r.get("link", "")),
+                            "snippet": r.get("body", r.get("snippet", "")),
+                        })
+                break  # Success, exit retry loop
+            except Exception as e:
+                last_error = e
+                if attempt < 2:  # Don't sleep on last attempt
+                    await asyncio.sleep(2 ** attempt)  # 1s, 2s backoff
+                continue
+
+        if not results and last_error:
+            return f"❌ Search failed after 3 attempts: {last_error}"
 
         if not results:
             return f"No results found for: {query}"
@@ -69,7 +85,10 @@ async def web_fetch(url: str) -> str:
         The page content as plain text.
     """
     try:
-        import httpx
+        try:
+            import httpx
+        except ImportError:
+            return "❌ httpx not installed. Run: pip install httpx"
 
         async with httpx.AsyncClient(
             follow_redirects=True,
