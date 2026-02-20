@@ -1,52 +1,78 @@
-# Wingman 🦞
+# Wingman 🤖
 
-**Personal AI Assistant - OpenClaw-style Architecture**
+**Enterprise-Grade AI Assistant with OpenClaw Architecture**
 
-A self-hosted, privacy-first AI assistant that runs on your own hardware. Connect through messaging apps you already use, with full control over your data.
+A production-ready, self-hosted AI assistant with advanced features: multi-channel messaging, voice capabilities, security sandboxing, load balancing, hot-reload plugins, and comprehensive monitoring.
 
-## Features
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-- **Multi-Provider LLM Support**: Gemini, OpenAI, Kimi K2.5, Ollama (local), OpenRouter
-- **Multi-Channel Messaging**: Telegram, Discord, WebChat UI
-- **Specialized Agents**: Research, Coding, Writing, Data Analysis, System Admin
-- **Persistent Memory**: Session history, daily logs, long-term memory with semantic search
-- **Skills System**: Modular task-specific capabilities
-- **Plugin Architecture**: Extensible channels, tools, providers, and agents
+## ✨ Features
 
-## Architecture
+### 🎯 Core Capabilities
+- **Multi-Provider LLM Support**: Kimi K2.5, Gemini, OpenAI, Ollama (local), OpenRouter
+- **6 Messaging Channels**: WebChat, Telegram, Discord, CLI, WhatsApp, Slack
+- **8 Specialized Agents**: Research, Coding, Writing, Data Analysis, System Admin, Browser, Router, Base
+- **Voice Capabilities**: Wake word detection (Porcupine), STT (Whisper/Google), TTS (OpenAI/ElevenLabs)
+- **14+ Integrated Tools**: Filesystem, Shell, Web Search, Browser Automation, Documents, Media, and more
+
+### 🔒 Security & Reliability
+- **Workspace Sandboxing**: All file/shell operations restricted to safe boundaries
+- **Security Audit Logging**: JSONL-based tracking of violations and blocked commands
+- **Rate Limiting**: Token bucket and sliding window strategies for API calls
+- **Load Balancing**: Round-robin provider selection with circuit breaker and exponential backoff
+- **Health Monitoring**: Real-time metrics for CPU, memory, disk, and process health
+
+### 🚀 Advanced Features
+- **Multi-Agent Communication**: Parent-child agent hierarchy with message passing
+- **Skills Hub**: ClawHub-style community skills with hot-reload (SHA256 checksums)
+- **Plugin System**: Hot-reload, lifecycle management, dependency tracking
+- **Autonomous Heartbeat**: Background tasks for cleanup, memory consolidation, health checks
+- **Structured Logging**: JSON logs with search, Rich console output, log rotation
+- **Testing Framework**: AgentTester with pytest fixtures for unit and integration tests
+
+## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Gateway (WebSocket)                     │
-│                     127.0.0.1:18789                         │
-├─────────────┬─────────────┬─────────────┬──────────────────┤
-│   WebChat   │   Telegram  │   Discord   │      CLI         │
-│     UI      │    Bot      │    Bot      │                  │
-└──────┬──────┴──────┬──────┴──────┬──────┴────────┬─────────┘
-       │             │             │               │
-       └─────────────┴─────────────┴───────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Gateway (FastAPI + WebSocket)                        │
+│                         127.0.0.1:18789                                 │
+├─────────┬──────────┬──────────┬─────────┬──────────┬──────────────────┤
+│ WebChat │ Telegram │ Discord  │   CLI   │ WhatsApp │     Slack        │
+│   UI    │   Bot    │   Bot    │         │  (Twilio)│  (Bolt+Socket)   │
+└────┬────┴────┬─────┴────┬─────┴────┬────┴────┬─────┴────┬─────────────┘
+     │         │          │          │         │          │
+     └─────────┴──────────┴──────────┴─────────┴──────────┘
                             │
-                    ┌───────┴───────┐
-                    │  Agent Router  │
-                    └───────┬───────┘
+                    ┌───────┴────────┐
+                    │  Agent Router  │  ← Smart task routing
+                    └───────┬────────┘
                             │
-       ┌────────────────────┼────────────────────┐
-       │                    │                    │
-   ┌───┴───┐           ┌────┴────┐          ┌───┴───┐
-   │Research│           │  Coder  │          │Writer │ ...
-   │ Agent  │           │  Agent  │          │ Agent │
-   └───┬───┘           └────┬────┘          └───┬───┘
-       │                    │                    │
-       └────────────────────┼────────────────────┘
+       ┌────────────────────┼─────────────────────────┐
+       │                    │                         │
+   ┌───┴────┐          ┌────┴─────┐            ┌─────┴────┐
+   │Research│          │  Coder   │            │  Writer  │ ...
+   │ Agent  │          │  Agent   │            │  Agent   │
+   └───┬────┘          └────┬─────┘            └─────┬────┘
+       │                    │                         │
+       └────────────────────┼─────────────────────────┘
                             │
-                    ┌───────┴───────┐
-                    │  Tool Registry │
-                    │  (bash, files, │
-                    │   web, etc.)   │
-                    └───────────────┘
+                ┌───────────┴────────────┐
+                │    Tool Registry       │
+                │  + Sessions System     │ ← Multi-agent communication
+                │  + Skills Hub          │ ← Hot-reload skills
+                └───────────┬────────────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+   ┌────┴─────┐       ┌─────┴──────┐     ┌─────┴──────┐
+   │Rate      │       │Health      │     │Security    │
+   │Limiter   │       │Monitor     │     │Audit       │
+   └──────────┘       └────────────┘     └────────────┘
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 ### 1. Install
 
