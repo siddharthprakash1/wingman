@@ -13,6 +13,44 @@ from src.tools.registry import ToolRegistry
 logger = logging.getLogger(__name__)
 
 
+# Dangerous command patterns that require extra scrutiny
+DANGEROUS_PATTERNS = [
+    'rm -rf /', 'rm -rf /*', 'mkfs', 'dd if=', ':(){:|:&};:',  # Destructive
+    '>/dev/sda', '>/dev/hda',  # Disk operations
+    'curl | sh', 'wget | sh', 'curl | bash', 'wget | bash',  # Blind execution
+    'chmod 777', 'chmod -R 777',  # Unsafe permissions
+]
+
+# High-risk commands that should be carefully validated
+HIGH_RISK_COMMANDS = [
+    'rm', 'rmdir', 'del', 'format', 'fdisk', 'mkfs',
+    'dd', 'shred', 'chmod', 'chown', 'sudo', 'su',
+]
+
+def _validate_command(command: str) -> tuple[bool, str]:
+    """Validate shell command for security issues.
+    
+    Returns:
+        (is_safe, error_message)
+    """
+    # Check for dangerous patterns
+    command_lower = command.lower()
+    for pattern in DANGEROUS_PATTERNS:
+        if pattern in command_lower:
+            return False, f"Dangerous command pattern detected: {pattern}"
+    
+    # Check for command injection attempts
+    if any(char in command for char in [';', '&&', '||', '|', '`', '$(']):
+        # These are valid in many cases, but log them
+        logger.warning(f"Command contains shell operators: {command[:100]}")
+    
+    # Warn about high-risk commands (don't block, but log)
+    first_word = command.split()[0] if command.split() else ''
+    if first_word in HIGH_RISK_COMMANDS:
+        logger.warning(f"High-risk command executed: {first_word}")
+    
+    return True, ""
+
 async def bash_execute(command: str, timeout: int = 60, working_directory: str = "") -> str:
     """
     Execute a shell command and return stdout+stderr.
@@ -25,6 +63,11 @@ async def bash_execute(command: str, timeout: int = 60, working_directory: str =
     Returns:
         Combined stdout and stderr output.
     """
+    # Validate command for security issues
+    is_safe, error_msg = _validate_command(command)
+    if not is_safe:
+        return f"❌ Command blocked: {error_msg}"
+    
     cwd = working_directory if working_directory else os.getcwd()
 
     try:

@@ -15,17 +15,46 @@ logger = logging.getLogger(__name__)
 # Directories that should never be accessed
 BLOCKED_PATHS = {
     '/etc/passwd', '/etc/shadow', '/etc/sudoers',
-    '/root', '/var/log/auth.log',
+    '/root', '/var/log/auth.log', '/etc/ssh',
+    '/var/root', '/.Trashes',
+}
+
+# Allowed workspace directories (relative to home or current working directory)
+ALLOWED_WORKSPACES = {
+    Path.home(),
+    Path.cwd(),
 }
 
 def _is_safe_path(path: Path) -> bool:
-    """Check if path is safe to access (no sensitive system files)."""
-    resolved = str(path.resolve())
+    """Check if path is safe to access (no sensitive system files or path traversal)."""
+    try:
+        resolved = path.resolve(strict=False)
+    except Exception:
+        return False
+    
+    resolved_str = str(resolved)
     
     # Block absolute paths to sensitive locations
     for blocked in BLOCKED_PATHS:
-        if resolved.startswith(blocked):
+        if resolved_str.startswith(blocked):
             return False
+    
+    # Check for path traversal attempts (../ sequences)
+    # After resolving, ensure the path is within allowed workspaces
+    path_str = str(path)
+    if '..' in path_str.split(os.sep):
+        # Verify the resolved path is within allowed boundaries
+        is_within_workspace = any(
+            resolved.is_relative_to(workspace) 
+            for workspace in ALLOWED_WORKSPACES
+        )
+        if not is_within_workspace:
+            logger.warning(f"Path traversal attempt detected: {path} -> {resolved}")
+            return False
+    
+    # Additional check: prevent access to hidden system directories in root
+    if resolved_str.startswith('/.'):
+        return False
     
     return True
 
