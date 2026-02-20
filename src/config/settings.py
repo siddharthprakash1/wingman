@@ -135,10 +135,27 @@ class WebChatChannel(BaseModel):
     port: int = 8080
 
 
+class WhatsAppChannel(BaseModel):
+    enabled: bool = False
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_whatsapp_number: str = ""  # Format: whatsapp:+14155238886
+    allow_from: list[str] = Field(default_factory=list)
+
+
+class SlackChannel(BaseModel):
+    enabled: bool = False
+    bot_token: str = ""
+    app_token: str = ""  # For Socket Mode
+    allow_from: list[str] = Field(default_factory=list)
+
+
 class ChannelsConfig(BaseModel):
     telegram: TelegramChannel = Field(default_factory=TelegramChannel)
     discord: DiscordChannel = Field(default_factory=DiscordChannel)
     webchat: WebChatChannel = Field(default_factory=WebChatChannel)
+    whatsapp: WhatsAppChannel = Field(default_factory=WhatsAppChannel)
+    slack: SlackChannel = Field(default_factory=SlackChannel)
 
 
 class GatewayConfig(BaseModel):

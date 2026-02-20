@@ -1,8 +1,8 @@
 """
 Discord Channel — connect the agent to Discord.
 
-Listens for messages mentioning the bot and routes them
-through the agent loop.
+Supports slash commands, rich embeds, buttons, and interactive components
+for an enhanced Discord bot experience.
 """
 
 from __future__ import annotations
@@ -48,9 +48,82 @@ async def start_discord_bot(settings: "Settings") -> None:
     intents.message_content = True
     bot = commands.Bot(command_prefix="!", intents=intents)
 
+    # Slash command: /ask
+    @bot.tree.command(name="ask", description="Ask Wingman AI a question")
+    async def ask_command(interaction: discord.Interaction, question: str):
+        """Slash command for asking questions."""
+        await interaction.response.defer()
+        
+        session_key = f"discord:{interaction.channel_id}:{interaction.user.id}"
+        if session_key not in sessions:
+            sessions[session_key] = AgentSession(
+                session_id=session_key,
+                settings=settings,
+            )
+        
+        session = sessions[session_key]
+        
+        try:
+            response = await session.process_message(question, channel="discord")
+            
+            # Create rich embed
+            embed = discord.Embed(
+                description=response[:4096],  # Discord embed limit
+                color=discord.Color.blue()
+            )
+            embed.set_author(
+                name="Wingman AI",
+                icon_url=bot.user.avatar.url if bot.user.avatar else None
+            )
+            embed.set_footer(text=f"Requested by {interaction.user.name}")
+            
+            await interaction.followup.send(embed=embed)
+        
+        except Exception as e:
+            logger.error(f"Discord slash command error: {e}")
+            await interaction.followup.send(f"❌ Error: {e}")
+    
+        try:
+            async with message.channel.typing():
+                response = await session.process_message(text, channel="discord")
+
+            # Create rich embed for responses
+            if len(response) <= 4096:
+                embed = discord.Embed(
+                    description=response,
+                    color=discord.Color.blue()
+                )
+                embed.set_author(
+                    name="Wingman AI",
+                    icon_url=bot.user.avatar.url if bot.user.avatar else None
+                )
+                await message.reply(embed=embed)
+            else:
+                # For long responses, use plain text
+                for i in range(0, len(response), 2000):
+                    if i == 0:
+                        await message.reply(response[i:i + 2000])
+                    else:
+                        await message.channel.send(response[i:i + 2000])
+        )
+        embed.add_field(
+            name="⚡ Commands",
+            value="`/ask <question>` - Ask a question\n`/help` - Show this help",
+            inline=False
+        )
+        embed.set_footer(text="Powered by Wingman AI")
+        
+        await interaction.response.send_message(embed=embed)
+
     @bot.event
     async def on_ready():
         logger.info(f"Discord bot connected as {bot.user}")
+        # Sync slash commands
+        try:
+            synced = await bot.tree.sync()
+            logger.info(f"Synced {len(synced)} slash command(s)")
+        except Exception as e:
+            logger.error(f"Failed to sync commands: {e}")
 
     @bot.event
     async def on_message(message: discord.Message):
