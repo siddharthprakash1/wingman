@@ -10,6 +10,7 @@ Model string format: "provider/model-name"
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -132,25 +133,47 @@ class ProviderManager:
         Get the first healthy provider, with failover.
 
         Tries the default provider first, then falls back through the chain.
+        Uses non-blocking async health checks with timeout.
         """
         default_provider = self.settings.get_model_provider()
         priority = [default_provider] + [
             p for p in ["gemini", "ollama", "openai", "openrouter"] if p != default_provider
         ]
 
-        for name in priority:
-            if name in self._providers:
-                provider = self._providers[name]
-                try:
-                    if await provider.health_check():
-                        logger.info(f"Using provider: {name}")
-                        return provider
-                    else:
-                        logger.warning(f"Provider {name} health check failed, trying next...")
-                except Exception as e:
-                    logger.warning(f"Provider {name} error: {e}, trying next...")
+        async def check_provider(name: str) -> tuple[str, bool]:
+            """Non-blocking health check for a single provider."""
+            if name not in self._providers:
+                return name, False
+            
+            provider = self._providers[name]
+            try:
+                # Run health check with timeout to prevent blocking
+                is_healthy = await asyncio.wait_for(
+                    provider.health_check(),
+                    timeout=5.0  # 5 second timeout
+                )
+                return name, is_healthy
+            except asyncio.TimeoutError:
+                logger.warning(f"Provider {name} health check timed out")
+                return name, False
+            except Exception as e:
+                logger.warning(f"Provider {name} health check error: {e}")
+                return name, False
 
+        # Check all providers concurrently
+        tasks = [check_provider(name) for name in priority if name in self._providers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Find first healthy provider
+        for result in results:
+            if isinstance(result, tuple):
+                name, is_healthy = result
+                if is_healthy:
+                    logger.info(f"Using healthy provider: {name}")
+                    return self._providers[name]
+        
         # If no health check passes, return the default anyway
+        logger.warning("No healthy providers found, using default")
         return self.get_provider()
 
     async def chat(

@@ -7,6 +7,7 @@ without API calls.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -42,21 +43,34 @@ class LocalEmbeddings:
         self._model = None
         self._dimension = self.MODELS.get(model_name, 384)
     
-    def _load_model(self):
-        """Lazy load the model."""
+    async def _load_model_async(self):
+        """Async wrapper for lazy model loading to prevent blocking."""
         if self._model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-            except ImportError:
-                raise ImportError(
-                    "sentence-transformers not installed. Run: pip install sentence-transformers"
-                )
-            
-            logger.info(f"Loading embedding model: {self.model_name}")
-            self._model = SentenceTransformer(self.model_name, device=self.device)
-            logger.info(f"Model loaded. Dimension: {self._dimension}")
-        
+            # Load model in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._load_model_sync)
         return self._model
+    
+    def _load_model_sync(self):
+        """Synchronous model loading (called from executor)."""
+        if self._model is not None:
+            return self._model
+            
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError(
+                "sentence-transformers not installed. Run: pip install sentence-transformers"
+            )
+        
+        logger.info(f"Loading embedding model: {self.model_name}")
+        self._model = SentenceTransformer(self.model_name, device=self.device)
+        logger.info(f"Model loaded. Dimension: {self._dimension}")
+        return self._model
+    
+    def _load_model(self):
+        """Lazy load the model (synchronous version)."""
+        return self._load_model_sync()
     
     @property
     def dimension(self) -> int:
@@ -64,19 +78,44 @@ class LocalEmbeddings:
         return self._dimension
     
     def embed(self, text: str) -> list[float]:
-        """Generate embedding for a single text."""
+        """Generate embedding for a single text (synchronous)."""
         model = self._load_model()
         embedding = model.encode(text, convert_to_numpy=True)
         return embedding.tolist()
     
+    async def embed_async(self, text: str) -> list[float]:
+        """Generate embedding for a single text (async, non-blocking)."""
+        model = await self._load_model_async()
+        loop = asyncio.get_event_loop()
+        embedding = await loop.run_in_executor(
+            None,
+            lambda: model.encode(text, convert_to_numpy=True)
+        )
+        return embedding.tolist()
+    
     def embed_batch(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
-        """Generate embeddings for multiple texts."""
+        """Generate embeddings for multiple texts (synchronous)."""
         model = self._load_model()
         embeddings = model.encode(
             texts,
             batch_size=batch_size,
             show_progress_bar=len(texts) > 100,
             convert_to_numpy=True,
+        )
+        return embeddings.tolist()
+    
+    async def embed_batch_async(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
+        """Generate embeddings for multiple texts (async, non-blocking)."""
+        model = await self._load_model_async()
+        loop = asyncio.get_event_loop()
+        embeddings = await loop.run_in_executor(
+            None,
+            lambda: model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=len(texts) > 100,
+                convert_to_numpy=True,
+            )
         )
         return embeddings.tolist()
     
