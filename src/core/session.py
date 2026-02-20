@@ -291,12 +291,19 @@ class SessionManager:
     - Session creation and resolution
     - Persistence to disk
     - Session lookup by various identifiers
+    - Automatic cleanup of expired sessions
     """
+    
+    # Session timeout in seconds (1 hour of inactivity)
+    SESSION_TIMEOUT = 3600
+    # Maximum number of sessions to keep in memory
+    MAX_ACTIVE_SESSIONS = 100
 
     def __init__(self, sessions_dir: Path):
         self.sessions_dir = sessions_dir
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self._active_sessions: dict[str, Session] = {}
+        self._last_access: dict[str, datetime] = {}
 
     def resolve_session(
         self,
@@ -326,8 +333,13 @@ class SessionManager:
             session_id = f"dm:{channel}:{user_id or 'unknown'}"
             session_type = SessionType.DM
 
+        # Periodically cleanup expired sessions
+        if len(self._active_sessions) % 10 == 0:
+            self.cleanup_expired_sessions()
+        
         # Check active sessions first
         if session_id in self._active_sessions:
+            self._last_access[session_id] = datetime.now()
             return self._active_sessions[session_id]
 
         # Try to load from disk
@@ -349,17 +361,24 @@ class SessionManager:
             logger.info(f"Loaded existing session: {session_id}")
 
         self._active_sessions[session_id] = session
+        self._last_access[session_id] = datetime.now()
+        
+        # Enforce session limit
+        self.enforce_session_limit()
+        
         return session
 
     def get_session(self, session_id: str) -> Session | None:
         """Get a session by ID."""
         if session_id in self._active_sessions:
+            self._last_access[session_id] = datetime.now()
             return self._active_sessions[session_id]
         
         session_path = self.sessions_dir / f"{session_id.replace(':', '_')}.json"
         session = Session.load(session_path)
         if session:
             self._active_sessions[session_id] = session
+            self._last_access[session_id] = datetime.now()
         return session
 
     def save_session(self, session: Session) -> None:
@@ -384,9 +403,61 @@ class SessionManager:
         """Delete a session."""
         if session_id in self._active_sessions:
             del self._active_sessions[session_id]
+        if session_id in self._last_access:
+            del self._last_access[session_id]
         
         session_path = self.sessions_dir / f"{session_id.replace(':', '_')}.json"
         if session_path.exists():
             session_path.unlink()
             return True
         return False
+    
+    def cleanup_expired_sessions(self) -> int:
+        """Remove sessions that haven't been accessed within the timeout period.
+        
+        Returns:
+            Number of sessions cleaned up.
+        """
+        now = datetime.now()
+        expired = []
+        
+        for session_id, last_access in self._last_access.items():
+            if (now - last_access).total_seconds() > self.SESSION_TIMEOUT:
+                expired.append(session_id)
+        
+        for session_id in expired:
+            session = self._active_sessions.get(session_id)
+            if session:
+                self.save_session(session)
+            self.delete_session(session_id)
+            logger.info(f"Cleaned up expired session: {session_id}")
+        
+        return len(expired)
+    
+    def enforce_session_limit(self) -> int:
+        """Enforce maximum active sessions by removing oldest sessions.
+        
+        Returns:
+            Number of sessions removed.
+        """
+        if len(self._active_sessions) <= self.MAX_ACTIVE_SESSIONS:
+            return 0
+        
+        # Sort by last access time
+        sorted_sessions = sorted(
+            self._last_access.items(),
+            key=lambda x: x[1]
+        )
+        
+        to_remove = len(self._active_sessions) - self.MAX_ACTIVE_SESSIONS
+        removed = 0
+        
+        for session_id, _ in sorted_sessions[:to_remove]:
+            session = self._active_sessions.get(session_id)
+            if session:
+                self.save_session(session)
+            if self.delete_session(session_id):
+                removed += 1
+                logger.info(f"Removed session due to limit: {session_id}")
+        
+        return removed
