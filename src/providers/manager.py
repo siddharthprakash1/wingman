@@ -6,12 +6,15 @@ Model string format: "provider/model-name"
   - "gemini/gemini-2.5-flash"  → Gemini provider
   - "ollama/deepseek-r1:14b"   → Ollama provider
   - "openrouter/anthropic/claude-opus-4-5" → OpenRouter provider
+
+Features round-robin load balancing and automatic failover with exponential backoff.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from typing import Any
 
 from src.config.settings import Settings, get_settings
@@ -22,19 +25,28 @@ from src.providers.ollama import OllamaProvider
 from src.providers.openai import OpenAIProvider
 from src.providers.openrouter import OpenRouterProvider
 
-logger = logging.getLogger(__name__)
-
-
 class ProviderManager:
     """
-    Manages LLM providers with automatic failover.
+    Manages LLM providers with automatic failover and round-robin load balancing.
 
+    Features:
+    - Round-robin selection across healthy providers
+    - Automatic failover with exponential backoff
+    - Health-based provider selection
+    - Request distribution for better reliability
+    
     Priority: configured default → kimi → gemini → ollama → openrouter
     """
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
         self._providers: dict[str, LLMProvider] = {}
+        self._provider_order: list[str] = []  # For round-robin
+        self._current_index = 0  # Round-robin index
+        self._provider_stats: dict[str, dict[str, Any]] = {}  # Track usage stats
+        self._init_providers()
+
+    def _init_providers(self) -> None:Provider] = {}
         self._init_providers()
 
     def _init_providers(self) -> None:
@@ -78,17 +90,30 @@ class ProviderManager:
             )
 
         # OpenAI
-        if cfg.openai.api_key:
-            self._providers["openai"] = OpenAIProvider(
-                api_key=cfg.openai.api_key,
-                api_base=cfg.openai.api_base,
-                model=self.settings.get_model_name()
-                if self.settings.get_model_provider() == "openai"
-                else cfg.openai.model,
-            )
-
         # OpenAI Chat (Weak/Cheap model)
         if cfg.openai_chat.api_key:
+            self._providers["openai_chat"] = OpenAIProvider(
+                api_key=cfg.openai_chat.api_key,
+                api_base=cfg.openai_chat.api_base,
+                model=self.settings.get_model_name()
+                if self.settings.get_model_provider() == "openai_chat"
+                else cfg.openai_chat.model,
+            )
+        
+        # Initialize provider order for round-robin
+        self._provider_order = list(self._providers.keys())
+        
+        # Initialize stats tracking
+        for name in self._provider_order:
+            self._provider_stats[name] = {
+                "requests": 0,
+                "successes": 0,
+                "failures": 0,
+                "last_failure": None,
+                "consecutive_failures": 0,
+            }
+
+    def get_provider(self, provider_name: str | None = None) -> LLMProvider:
             self._providers["openai_chat"] = OpenAIProvider(
                 api_key=cfg.openai_chat.api_key,
                 api_base=cfg.openai_chat.api_base,
@@ -103,10 +128,55 @@ class ProviderManager:
 
         Falls back through the priority chain if the requested provider
         is not available.
+            "  5. Set providers.openrouter.api_key (https://openrouter.ai)"
+        )
+    
+    def get_next_round_robin_provider(self) -> LLMProvider | None:
         """
-        if provider_name and provider_name in self._providers:
-            return self._providers[provider_name]
+        Get the next provider using round-robin selection.
+        
+        Skips providers with recent consecutive failures.
+        """
+        if not self._provider_order:
+            return None
+        
+        # Try all providers in round-robin order
+        attempts = 0
+        while attempts < len(self._provider_order):
+            name = self._provider_order[self._current_index]
+            self._current_index = (self._current_index + 1) % len(self._provider_order)
+            attempts += 1
+            
+            # Skip providers with too many consecutive failures (circuit breaker)
+            stats = self._provider_stats.get(name, {})
+            if stats.get("consecutive_failures", 0) >= 3:
+                logger.debug(f"Skipping {name} due to consecutive failures")
+                continue
+            
+            if name in self._providers:
+                return self._providers[name]
+        
+        # If all providers are circuit-broken, return default anyway
+        return self.get_provider()
+    
+    def record_success(self, provider_name: str) -> None:
+        """Record a successful request for a provider."""
+        if provider_name in self._provider_stats:
+            stats = self._provider_stats[provider_name]
+            stats["requests"] += 1
+            stats["successes"] += 1
+            stats["consecutive_failures"] = 0  # Reset on success
+    
+    def record_failure(self, provider_name: str) -> None:
+        """Record a failed request for a provider."""
+        if provider_name in self._provider_stats:
+            stats = self._provider_stats[provider_name]
+            stats["requests"] += 1
+            stats["failures"] += 1
+            stats["consecutive_failures"] += 1
+            stats["last_failure"] = asyncio.get_event_loop().time()
 
+    async def get_healthy_provider(self) -> LLMProvider:
         # Use configured default
         default_provider = self.settings.get_model_provider()
         if default_provider in self._providers:
@@ -184,54 +254,110 @@ class ProviderManager:
         max_tokens: int | None = None,
         stream: bool = False,
         provider_name: str | None = None,
+        max_retries: int = 3,
     ) -> LLMResponse:
         """
-        Send a chat request with automatic failover.
+        Send a chat request with automatic failover and exponential backoff.
 
-        Uses the default provider first, falls back if it fails.
+        Uses round-robin load balancing when no specific provider is requested.
+        Retries failed requests with exponential backoff.
+        
+        Args:
+            messages: Conversation history
+            tools: Available tools for function calling
+            temperature: Sampling temperature
+            max_tokens: Maximum response length
+            stream: Enable streaming responses
+            provider_name: Force specific provider (disables round-robin)
+            max_retries: Maximum retry attempts per provider (default: 3)
         """
         temperature = temperature or self.settings.agents.defaults.temperature
         max_tokens = max_tokens or self.settings.agents.defaults.max_tokens
 
-        provider = self.get_provider(provider_name)
+        # Get initial provider
+        if provider_name:
+            provider = self.get_provider(provider_name)
+            providers_to_try = [(provider_name, provider)]
+        else:
+            # Use round-robin for load balancing
+            provider = self.get_next_round_robin_provider()
+            if provider:
+                provider_name = next(
+                    (name for name, p in self._providers.items() if p is provider),
+                    None
+                )
+                providers_to_try = [(provider_name, provider)]
+            else:
+                providers_to_try = []
+            
+            # Add fallback providers
+            for name, p in self._providers.items():
+                if (name, p) not in providers_to_try:
+                    providers_to_try.append((name, p))
+        
+        last_error = None
+        
+        # Try each provider with exponential backoff
+        for idx, (prov_name, prov) in enumerate(providers_to_try):
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        # Exponential backoff: 1s, 2s, 4s
+                        backoff = 2 ** attempt
+                        logger.info(f"Retrying {prov_name} after {backoff}s backoff (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(backoff)
+                    
+                    response = await prov.chat(
+                        messages=messages,
+                        tools=tools,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        stream=stream,
+                    )
+                    
+                    # Success!
+                    self.record_success(prov_name)
+                    if idx > 0 or attempt > 0:
+                        logger.info(f"Successful failover to {prov_name}")
+                    return response
+                
+                except Exception as e:
+                    last_error = e
+                    self.record_failure(prov_name)
+                    
+                    if attempt < max_retries - 1:
+                        logger.warning(f"{prov_name} failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    else:
+                        logger.error(f"{prov_name} failed after {max_retries} attempts: {e}")
+                        # Move to next provider
+                        break
 
-        try:
-            return await provider.chat(
-                messages=messages,
-                tools=tools,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=stream,
-            )
-        except Exception as e:
-            logger.error(f"Primary provider failed: {e}")
-            # Try failover
-            for name, fallback in self._providers.items():
-                if fallback is not provider:
-                    try:
-                        logger.info(f"Attempting failover to {name}...")
-                        return await fallback.chat(
-                            messages=messages,
-                            tools=tools,
-                            temperature=temperature,
-                            max_tokens=max_tokens,
-                            stream=stream,
-                        )
-                    except Exception as fe:
-                        logger.warning(f"Failover to {name} also failed: {fe}")
-                        continue
-
-            raise RuntimeError(f"All providers failed. Last error: {e}") from e
+        # All providers exhausted
+        error_msg = f"All providers failed after retries. Last error: {last_error}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from last_error
 
     async def health_report(self) -> dict[str, Any]:
-        """Get health status of all providers."""
+        """Get health status and usage statistics of all providers."""
         report = {}
         for name, provider in self._providers.items():
             try:
                 healthy = await provider.health_check()
+                stats = self._provider_stats.get(name, {})
                 report[name] = {
                     "status": "healthy" if healthy else "unhealthy",
                     "info": provider.get_model_info(),
+                    "stats": {
+                        "total_requests": stats.get("requests", 0),
+                        "successes": stats.get("successes", 0),
+                        "failures": stats.get("failures", 0),
+                        "consecutive_failures": stats.get("consecutive_failures", 0),
+                        "success_rate": (
+                            stats["successes"] / stats["requests"] * 100
+                            if stats.get("requests", 0) > 0
+                            else 0.0
+                        ),
+                    },
                 }
             except Exception as e:
                 report[name] = {
@@ -240,3 +366,11 @@ class ProviderManager:
                     "info": provider.get_model_info(),
                 }
         return report
+    
+    def get_load_balancing_stats(self) -> dict[str, Any]:
+        """Get load balancing and failover statistics."""
+        return {
+            "providers": list(self._provider_order),
+            "current_round_robin_index": self._current_index,
+            "stats": self._provider_stats,
+        }
