@@ -149,6 +149,8 @@ def create_default_registry() -> ToolRegistry:
     from src.tools.browser_use import register_browser_use_tools
     # Document ingestion and knowledge base tools
     from src.tools.documents import register_document_tools
+    # Multi-agent communication tools
+    from src.tools.sessions import register_session_tools
 
     registry = ToolRegistry()
     register_shell_tools(registry)
@@ -165,5 +167,7 @@ def create_default_registry() -> ToolRegistry:
     register_browser_use_tools(registry)
     # Register document/knowledge base tools
     register_document_tools(registry)
+    # Register multi-agent session tools
+    register_session_tools(registry)
 
     return registry

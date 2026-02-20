@@ -33,6 +33,7 @@ class AgentDefaults(BaseModel):
     max_tokens: int = 8192
     temperature: float = 0.7
     max_tool_iterations: int = 25
+    workspace_sandboxed: bool = True  # Enforce workspace boundaries for all operations
 
 
 class AgentConfig(BaseModel):
@@ -94,6 +95,12 @@ class WebToolConfig(BaseModel):
 class ShellToolConfig(BaseModel):
     enabled: bool = True
     allowed_commands: list[str] = Field(default_factory=lambda: ["*"])
+    blocked_commands: list[str] = Field(default_factory=lambda: [
+        "rm -rf /", "rm -rf /*", "mkfs", "dd if=", "format",
+        "curl | sh", "wget | sh", "curl | bash", "wget | bash",
+        ":(){:|:&};:", "chmod 777", "chmod -R 777",
+    ])
+    workspace_restricted: bool = True  # Only allow commands in workspace
 
 
 class BrowserToolConfig(BaseModel):

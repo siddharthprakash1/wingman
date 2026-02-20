@@ -1,5 +1,7 @@
 """
 Filesystem tools — read, write, edit, and list files.
+
+All operations respect workspace sandboxing when enabled.
 """
 
 from __future__ import annotations
@@ -9,50 +11,84 @@ import logging
 from pathlib import Path
 
 from src.tools.registry import ToolRegistry
-
-logger = logging.getLogger(__name__)
-
+from src.config.settings import get_settings
 # Directories that should never be accessed
 BLOCKED_PATHS = {
     '/etc/passwd', '/etc/shadow', '/etc/sudoers',
     '/root', '/var/log/auth.log', '/etc/ssh',
-    '/var/root', '/.Trashes',
+    '/var/root', '/.Trashes', '/System', '/Library',
+    '/bin', '/sbin', '/usr/bin', '/usr/sbin',
 }
 
-# Allowed workspace directories (relative to home or current working directory)
-ALLOWED_WORKSPACES = {
-    Path.home(),
-    Path.cwd(),
-}
 
-def _is_safe_path(path: Path) -> bool:
-    """Check if path is safe to access (no sensitive system files or path traversal)."""
+def _get_workspace_root() -> Path:
+    """Get the configured workspace root directory."""
+    settings = get_settings()
+    workspace = Path(settings.agents.defaults.workspace).expanduser().resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    return workspace
+
+
+def _is_sandboxed() -> bool:
+    """Check if workspace sandboxing is enabled."""
+    settings = get_settings()
+    return settings.agents.defaults.workspace_sandboxed
+
+
+def _is_safe_path(path: Path, session_id: str | None = None) -> tuple[bool, str]:
+    """
+    Check if path is safe to access.
+    
+    Returns:
+        (is_safe, error_message)
+    """
+    audit = get_audit()
+    
     try:
         resolved = path.resolve(strict=False)
-    except Exception:
-        return False
+    except Exception as e:
+        return False, f"Invalid path: {e}"
     
     resolved_str = str(resolved)
     
     # Block absolute paths to sensitive locations
     for blocked in BLOCKED_PATHS:
         if resolved_str.startswith(blocked):
-            return False
+            audit.log_workspace_violation(
+                str(path), "access_blocked_path", session_id
+            )
+            return False, f"Access denied to system path: {blocked}"
     
-    # Check for path traversal attempts (../ sequences)
-    # After resolving, ensure the path is within allowed workspaces
-    path_str = str(path)
-    if '..' in path_str.split(os.sep):
-        # Verify the resolved path is within allowed boundaries
-        is_within_workspace = any(
-            resolved.is_relative_to(workspace) 
-            for workspace in ALLOWED_WORKSPACES
-        )
-        if not is_within_workspace:
-            logger.warning(f"Path traversal attempt detected: {path} -> {resolved}")
-            return False
+    # Check workspace sandboxing
+    if _is_sandboxed():
+        workspace_root = _get_workspace_root()
+        try:
+async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
+    """
+    Read the contents of a file.
+
+    Args:
+        path: Absolute or relative path to the file.
+        start_line: Start line (1-indexed, 0 = from beginning).
+        end_line: End line (1-indexed, 0 = to end).
+    """
+    try:
+        p = Path(path).expanduser().resolve()
+        is_safe, error = _is_safe_path(p)
+        if not is_safe:
+            return f"❌ {error}"
+        if not p.exists():
+            return f"❌ File not found: {path}"
+        if not p.is_file():
+            return f"❌ Not a file: {path}"
+
+        content = p.read_text(encoding="utf-8", errors="replace")non-sandboxed mode): {path} -> {resolved}")
     
     # Additional check: prevent access to hidden system directories in root
+    if resolved_str.startswith('/.') and not _is_sandboxed():
+        return False, "Access denied to hidden system directory"
+    
+    return True, ""l check: prevent access to hidden system directories in root
     if resolved_str.startswith('/.'):
         return False
     
@@ -70,8 +106,9 @@ async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
     """
     try:
         p = Path(path).expanduser().resolve()
-        if not _is_safe_path(p):
-            return f"❌ Access denied: {path}"
+        is_safe, error = _is_safe_path(p)
+        if not is_safe:
+            return f"❌ {error}"
         if not p.exists():
             return f"❌ File not found: {path}"
         if not p.is_file():
@@ -96,16 +133,17 @@ async def write_file(path: str, content: str) -> str:
 
     Args:
         path: Absolute or relative path to the file.
-        content: The content to write.
     """
     try:
         p = Path(path).expanduser().resolve()
-        if not _is_safe_path(p):
-            return f"❌ Access denied: {path}"
+        is_safe, error = _is_safe_path(p)
+        if not is_safe:
+            return f"❌ {error}"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         return f"✅ Wrote {len(content)} bytes to {p}"
     except Exception as e:
+        return f"❌ Error writing file: {e}"
         return f"❌ Error writing file: {e}"
 
 
