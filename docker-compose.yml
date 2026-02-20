@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  wingman:
+    build: .
+    container_name: wingman-ai
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    environment:
+      # LLM Providers (set at least one)
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      
+      # Model configuration
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-kimi/kimi-k2.5}
+      - MAX_TOKENS=${MAX_TOKENS:-8192}
+      - TEMPERATURE=${TEMPERATURE:-0.7}
+      
+      # Workspace
+      - WINGMAN_WORKSPACE=${WINGMAN_WORKSPACE:-/root/.wingman/workspace}
+      - WINGMAN_WORKSPACE_SANDBOXED=${WINGMAN_WORKSPACE_SANDBOXED:-true}
+      
+      # Gateway
+      - GATEWAY_HOST=${GATEWAY_HOST:-0.0.0.0}
+      - GATEWAY_PORT=${GATEWAY_PORT:-18789}
+      
+      # Channels (optional)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER:-}
+      
+      # Voice (optional)
+      - PICOVOICE_ACCESS_KEY=${PICOVOICE_ACCESS_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - wingman-data:/root/.wingman
+      - ./extensions:/app/extensions  # Mount plugins directory
+    networks:
+      - wingman-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Vector store (for local embeddings)
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   container_name: wingman-qdrant
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - qdrant-data:/qdrant/storage
+  #   networks:
+  #     - wingman-network
+
+volumes:
+  wingman-data:
+    driver: local
+  # qdrant-data:
+  #   driver: local
+
+networks:
+  wingman-network:
+    driver: bridge
