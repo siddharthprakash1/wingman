@@ -85,11 +85,11 @@ async def web_fetch(url: str) -> str:
         The page content as plain text.
     """
     try:
-        try:
-            import httpx
-        except ImportError:
-            return "❌ httpx not installed. Run: pip install httpx"
-
+        import httpx
+    except ImportError:
+        return "❌ httpx not installed. Run: pip install httpx"
+    
+    try:
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=30.0,

@@ -7,6 +7,7 @@ as JSON Lines for a complete audit trail.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -25,6 +26,8 @@ class TranscriptLogger:
     - type: "user_message" | "assistant_message" | "tool_call" | "tool_result" | "error"
     - content: the actual content
     - metadata: optional extra info
+    
+    Uses a write queue to prevent concurrent write corruption.
     """
 
     def __init__(self, session_dir: Path, session_id: str):
@@ -32,9 +35,45 @@ class TranscriptLogger:
         self.session_id = session_id
         self.log_path = session_dir / f"{session_id}.jsonl"
         self.session_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Queue for serializing writes to prevent file corruption
+        self._write_queue: asyncio.Queue | None = None
+        self._writer_task = None
+        self._start_writer()
+
+    def _start_writer(self) -> None:
+        """Start the background writer task."""
+        try:
+            loop = asyncio.get_event_loop()
+            self._write_queue = asyncio.Queue()
+            if not self._writer_task or self._writer_task.done():
+                self._writer_task = loop.create_task(self._write_worker())
+        except RuntimeError:
+            # No event loop running, writes will be synchronous
+            pass
+    
+    async def _write_worker(self) -> None:
+        """Background worker that processes the write queue."""
+        while True:
+            try:
+                event = await self._write_queue.get()
+                if event is None:  # Shutdown signal
+                    break
+                
+                try:
+                    with open(self.log_path, "a") as f:
+                        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+                except Exception as e:
+                    logger.error(f"Failed to write transcript: {e}")
+                finally:
+                    self._write_queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Writer worker error: {e}")
 
     def _write_event(self, event_type: str, content: Any, metadata: dict | None = None) -> None:
-        """Write a single event to the JSONL log."""
+        """Queue a single event to be written to the JSONL log."""
         event = {
             "timestamp": datetime.now().isoformat(),
             "type": event_type,
@@ -45,10 +84,15 @@ class TranscriptLogger:
             event["metadata"] = metadata
 
         try:
-            with open(self.log_path, "a") as f:
-                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            # Try to queue for async write
+            if self._write_queue and self._writer_task and not self._writer_task.done():
+                self._write_queue.put_nowait(event)
+            else:
+                # Fallback to synchronous write if no event loop
+                with open(self.log_path, "a") as f:
+                    f.write(json.dumps(event, ensure_ascii=False) + "\n")
         except Exception as e:
-            logger.error(f"Failed to write transcript: {e}")
+            logger.error(f"Failed to queue/write transcript: {e}")
 
     def log_user_message(self, message: str, channel: str = "cli") -> None:
         """Log a user message."""
@@ -95,3 +139,19 @@ class TranscriptLogger:
         """Get the most recent N events."""
         events = self.read_transcript()
         return events[-count:]
+    
+    async def flush(self) -> None:
+        """Wait for all queued writes to complete."""
+        if self._write_queue:
+            await self._write_queue.join()
+    
+    def close(self) -> None:
+        """Close the transcript logger and stop the writer task."""
+        if self._write_queue:
+            try:
+                self._write_queue.put_nowait(None)  # Shutdown signal
+            except:
+                pass
+        
+        if self._writer_task and not self._writer_task.done():
+            self._writer_task.cancel()
