@@ -87,15 +87,15 @@ extraction = [
 ]
 
 # Browser-Use - AI-powered browser automation
-all = [
-    "wingman[dev,discord,whatsapp,slack,voice,local,extraction,browser]",
-]   "langchain-openai>=0.1.0",
+browser = [
+    "browser-use>=0.1.0",
+    "langchain-openai>=0.1.0",
     "langchain-anthropic>=0.1.0",
     "langchain-google-genai>=1.0.0",
 ]
 
 all = [
-    "wingman[dev,discord,whatsapp,slack,local,extraction,browser]",
+    "wingman[dev,discord,whatsapp,slack,voice,local,extraction,browser]",
 ]
 
 [project.scripts]

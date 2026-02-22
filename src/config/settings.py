@@ -150,12 +150,22 @@ class SlackChannel(BaseModel):
     allow_from: list[str] = Field(default_factory=list)
 
 
+class VoiceConfig(BaseModel):
+    enabled: bool = False
+    wake_word: str = "wingman"
+    stt_provider: str = "google"  # google, whisper, local
+    tts_provider: str = "pyttsx3"  # pyttsx3, openai, elevenlabs
+    picovoice_access_key: str = ""
+    elevenlabs_api_key: str = ""
+
+
 class ChannelsConfig(BaseModel):
     telegram: TelegramChannel = Field(default_factory=TelegramChannel)
     discord: DiscordChannel = Field(default_factory=DiscordChannel)
     webchat: WebChatChannel = Field(default_factory=WebChatChannel)
     whatsapp: WhatsAppChannel = Field(default_factory=WhatsAppChannel)
     slack: SlackChannel = Field(default_factory=SlackChannel)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
 
 
 class GatewayConfig(BaseModel):

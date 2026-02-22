@@ -1,5 +1,5 @@
 """
-Filesystem tools — read, write, edit, and list files.
+Filesystem tools - read, write, edit, and list files.
 
 All operations respect workspace sandboxing when enabled.
 """
@@ -12,6 +12,9 @@ from pathlib import Path
 
 from src.tools.registry import ToolRegistry
 from src.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
+
 # Directories that should never be accessed
 BLOCKED_PATHS = {
     '/etc/passwd', '/etc/shadow', '/etc/sudoers',
@@ -42,57 +45,32 @@ def _is_safe_path(path: Path, session_id: str | None = None) -> tuple[bool, str]
     Returns:
         (is_safe, error_message)
     """
-    audit = get_audit()
-    
     try:
         resolved = path.resolve(strict=False)
     except Exception as e:
         return False, f"Invalid path: {e}"
-    
+
     resolved_str = str(resolved)
-    
+
     # Block absolute paths to sensitive locations
     for blocked in BLOCKED_PATHS:
         if resolved_str.startswith(blocked):
-            audit.log_workspace_violation(
-                str(path), "access_blocked_path", session_id
-            )
             return False, f"Access denied to system path: {blocked}"
-    
+
     # Check workspace sandboxing
     if _is_sandboxed():
         workspace_root = _get_workspace_root()
         try:
-async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
-    """
-    Read the contents of a file.
+            resolved.relative_to(workspace_root)
+        except ValueError:
+            logger.warning(f"Path outside workspace (sandboxed mode): {path} -> {resolved}")
+            return False, f"Path is outside workspace: {path}"
 
-    Args:
-        path: Absolute or relative path to the file.
-        start_line: Start line (1-indexed, 0 = from beginning).
-        end_line: End line (1-indexed, 0 = to end).
-    """
-    try:
-        p = Path(path).expanduser().resolve()
-        is_safe, error = _is_safe_path(p)
-        if not is_safe:
-            return f"❌ {error}"
-        if not p.exists():
-            return f"❌ File not found: {path}"
-        if not p.is_file():
-            return f"❌ Not a file: {path}"
-
-        content = p.read_text(encoding="utf-8", errors="replace")non-sandboxed mode): {path} -> {resolved}")
-    
     # Additional check: prevent access to hidden system directories in root
     if resolved_str.startswith('/.') and not _is_sandboxed():
         return False, "Access denied to hidden system directory"
-    
-    return True, ""l check: prevent access to hidden system directories in root
-    if resolved_str.startswith('/.'):
-        return False
-    
-    return True
+
+    return True, ""
 
 
 async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
@@ -108,11 +86,11 @@ async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
         p = Path(path).expanduser().resolve()
         is_safe, error = _is_safe_path(p)
         if not is_safe:
-            return f"❌ {error}"
+            return f"Error: {error}"
         if not p.exists():
-            return f"❌ File not found: {path}"
+            return f"Error: File not found: {path}"
         if not p.is_file():
-            return f"❌ Not a file: {path}"
+            return f"Error: Not a file: {path}"
 
         content = p.read_text(encoding="utf-8", errors="replace")
 
@@ -124,7 +102,7 @@ async def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
 
         return content
     except Exception as e:
-        return f"❌ Error reading file: {e}"
+        return f"Error reading file: {e}"
 
 
 async def write_file(path: str, content: str) -> str:
@@ -133,18 +111,18 @@ async def write_file(path: str, content: str) -> str:
 
     Args:
         path: Absolute or relative path to the file.
+        content: Content to write.
     """
     try:
         p = Path(path).expanduser().resolve()
         is_safe, error = _is_safe_path(p)
         if not is_safe:
-            return f"❌ {error}"
+            return f"Error: {error}"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
-        return f"✅ Wrote {len(content)} bytes to {p}"
+        return f"Wrote {len(content)} bytes to {p}"
     except Exception as e:
-        return f"❌ Error writing file: {e}"
-        return f"❌ Error writing file: {e}"
+        return f"Error writing file: {e}"
 
 
 async def edit_file(
@@ -163,23 +141,23 @@ async def edit_file(
     try:
         p = Path(path).expanduser().resolve()
         if not p.exists():
-            return f"❌ File not found: {path}"
+            return f"Error: File not found: {path}"
 
         original = p.read_text(encoding="utf-8")
 
         if target_content not in original:
-            return f"❌ Target content not found in {path}. Make sure it matches exactly."
+            return f"Error: Target content not found in {path}. Make sure it matches exactly."
 
         count = original.count(target_content)
         modified = original.replace(target_content, replacement_content, 1)
         p.write_text(modified, encoding="utf-8")
 
         return (
-            f"✅ Replaced 1 occurrence in {p}"
+            f"Replaced 1 occurrence in {p}"
             + (f" ({count - 1} more occurrence(s) remain)" if count > 1 else "")
         )
     except Exception as e:
-        return f"❌ Error editing file: {e}"
+        return f"Error editing file: {e}"
 
 
 async def list_directory(path: str = ".", show_hidden: bool = False) -> str:
@@ -193,9 +171,9 @@ async def list_directory(path: str = ".", show_hidden: bool = False) -> str:
     try:
         p = Path(path).expanduser().resolve()
         if not p.exists():
-            return f"❌ Directory not found: {path}"
+            return f"Error: Directory not found: {path}"
         if not p.is_dir():
-            return f"❌ Not a directory: {path}"
+            return f"Error: Not a directory: {path}"
 
         entries = []
         for item in sorted(p.iterdir()):
@@ -203,12 +181,11 @@ async def list_directory(path: str = ".", show_hidden: bool = False) -> str:
                 continue
 
             if item.is_dir():
-                # Count children
                 try:
                     child_count = sum(1 for _ in item.iterdir())
-                    entries.append(f"📁 {item.name}/ ({child_count} items)")
+                    entries.append(f"[dir] {item.name}/ ({child_count} items)")
                 except PermissionError:
-                    entries.append(f"📁 {item.name}/ (permission denied)")
+                    entries.append(f"[dir] {item.name}/ (permission denied)")
             else:
                 size = item.stat().st_size
                 if size < 1024:
@@ -217,15 +194,15 @@ async def list_directory(path: str = ".", show_hidden: bool = False) -> str:
                     size_str = f"{size / 1024:.1f}KB"
                 else:
                     size_str = f"{size / (1024 * 1024):.1f}MB"
-                entries.append(f"📄 {item.name} ({size_str})")
+                entries.append(f"[file] {item.name} ({size_str})")
 
         if not entries:
             return f"(empty directory: {p})"
 
-        header = f"📂 {p}\n{'─' * 40}\n"
+        header = f"Directory: {p}\n" + "-" * 40 + "\n"
         return header + "\n".join(entries)
     except Exception as e:
-        return f"❌ Error listing directory: {e}"
+        return f"Error listing directory: {e}"
 
 
 def register_filesystem_tools(registry: ToolRegistry) -> None:

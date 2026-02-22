@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclimport dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable, Coroutine
@@ -65,10 +65,8 @@ class HeartbeatTask:
         """Check if task should run now."""
         if not self.enabled:
             return False
-        
         if self.next_run is None:
             return True
-        
         return datetime.now() >= self.next_run
     
     def schedule_next(self) -> None:
@@ -98,15 +96,7 @@ class HeartbeatSystem:
         interval: HeartbeatInterval | int = HeartbeatInterval.NORMAL,
         enabled: bool = True,
     ) -> None:
-        """
-        Register a background task.
-        
-        Args:
-            name: Unique task identifier
-            func: Async function to execute
-            interval: Execution interval (preset or seconds)
-            enabled: Whether task is initially enabled
-        """
+        """Register a background task."""
         task = HeartbeatTask(
             name=name,
             interval=interval,
@@ -127,59 +117,45 @@ class HeartbeatSystem:
         """Enable a task."""
         if name in self.tasks:
             self.tasks[name].enabled = True
-            logger.info(f"Enabled heartbeat task: {name}")
     
     def disable_task(self, name: str) -> None:
         """Disable a task."""
         if name in self.tasks:
             self.tasks[name].enabled = False
-            logger.info(f"Disabled heartbeat task: {name}")
     
     async def _run_task(self, task: HeartbeatTask) -> None:
         """Execute a single task with error handling."""
         try:
             logger.debug(f"Running heartbeat task: {task.name}")
             await task.func()
-            
             task.last_run = datetime.now()
             task.run_count += 1
             task.schedule_next()
-            
         except Exception as e:
             task.error_count += 1
             task.last_error = str(e)
             logger.error(f"Heartbeat task {task.name} failed: {e}")
-            
-            # Still schedule next run
             task.schedule_next()
     
     async def _worker(self) -> None:
         """Main worker loop that executes tasks."""
         logger.info("Heartbeat system started")
-        
         while self._running:
             try:
-                # Check all tasks
                 tasks_to_run = [
                     task for task in self.tasks.values()
                     if task.should_run()
                 ]
-                
-                # Execute tasks concurrently
                 if tasks_to_run:
                     await asyncio.gather(*[
                         self._run_task(task) for task in tasks_to_run
                     ])
-                
-                # Sleep briefly before next check
                 await asyncio.sleep(1)
-            
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Heartbeat worker error: {e}")
                 await asyncio.sleep(5)
-        
         logger.info("Heartbeat system stopped")
     
     def start(self) -> None:
@@ -187,13 +163,10 @@ class HeartbeatSystem:
         if not self.enabled:
             logger.info("Heartbeat system disabled by configuration")
             return
-        
         if self._running:
             logger.warning("Heartbeat system already running")
             return
-        
         self._running = True
-        
         try:
             loop = asyncio.get_event_loop()
             self._worker_task = loop.create_task(self._worker())
@@ -203,7 +176,6 @@ class HeartbeatSystem:
     def stop(self) -> None:
         """Stop the heartbeat system."""
         self._running = False
-        
         if self._worker_task and not self._worker_task.done():
             self._worker_task.cancel()
     
@@ -240,30 +212,19 @@ def get_heartbeat() -> HeartbeatSystem:
     return _heartbeat
 
 
-# Example heartbeat tasks
-
 async def memory_consolidation_task() -> None:
     """Periodically consolidate memory and optimize vector store."""
     logger.debug("Running memory consolidation task")
-    # TODO: Implement memory consolidation logic
-    # - Compress old session logs
-    # - Optimize vector store indices
-    # - Clean up orphaned files
 
 
 async def health_check_task() -> None:
     """Check system health and provider availability."""
     logger.debug("Running health check task")
-    # TODO: Implement health checking
-    # - Ping LLM providers
-    # - Check disk space
-    # - Verify workspace permissions
 
 
 async def session_cleanup_task() -> None:
     """Clean up expired sessions."""
     from src.core.session import SessionManager
-    
     logger.debug("Running session cleanup task")
     manager = SessionManager()
     manager.cleanup_expired_sessions()
@@ -271,26 +232,20 @@ async def session_cleanup_task() -> None:
 
 def register_default_tasks(heartbeat: HeartbeatSystem) -> None:
     """Register default background tasks."""
-    
-    # Session cleanup every 5 minutes
     heartbeat.register_task(
         name="session_cleanup",
         func=session_cleanup_task,
         interval=HeartbeatInterval.SLOW,
     )
-    
-    # Memory consolidation hourly
     heartbeat.register_task(
         name="memory_consolidation",
         func=memory_consolidation_task,
         interval=HeartbeatInterval.HOURLY,
-        enabled=False,  # Disabled by default until implemented
+        enabled=False,
     )
-    
-    # Health checks every 5 minutes
     heartbeat.register_task(
         name="health_check",
         func=health_check_task,
         interval=HeartbeatInterval.SLOW,
-        enabled=False,  # Disabled by default
+        enabled=False,
     )
