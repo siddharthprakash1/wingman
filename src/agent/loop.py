@@ -163,7 +163,7 @@ class AgentSession:
 
         while iteration < max_iterations:
             iteration += 1
-            logger.info(f"Agent loop iteration {iteration}/{max_iterations}")
+            print(f"   🔄 Agent loop iteration {iteration}/{max_iterations}")
 
             try:
                 response = await self.provider_manager.chat(
@@ -174,12 +174,15 @@ class AgentSession:
                 )
             except Exception as e:
                 error_msg = f"LLM call failed: {e}"
+                print(f"   ❌ LLM Error: {error_msg}")
                 logger.error(error_msg)
                 self.transcript.log_error(error_msg)
                 return f"❌ {error_msg}"
 
             # Check for tool calls
             if response.has_tool_calls:
+                print(f"   🔧 LLM wants to use {len(response.tool_calls)} tool(s)")
+                
                 # Execute each tool call
                 assistant_msg = Message(
                     role="assistant",
@@ -190,11 +193,14 @@ class AgentSession:
                 full_messages.append(assistant_msg)
 
                 for tool_call in response.tool_calls:
+                    print(f"   🛠️  Calling tool: {tool_call.name}")
+                    print(f"      Args: {str(tool_call.arguments)[:100]}...")
                     self.transcript.log_tool_call(tool_call.name, tool_call.arguments)
                     logger.info(f"Tool call: {tool_call.name}({tool_call.arguments})")
 
                     # Execute the tool
                     result = await self.tool_registry.execute(tool_call)
+                    print(f"   📊 Tool result: {result[:150]}{'...' if len(result) > 150 else ''}")
                     self.transcript.log_tool_result(tool_call.name, result[:500])
 
                     # Add tool result to messages
