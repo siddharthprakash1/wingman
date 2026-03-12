@@ -84,8 +84,47 @@ def create_app() -> FastAPI:
         return {"tools": registry.list_tools()}
 
     # -----------------------------------------------------------------------
-    # WebSocket Endpoint
+    # Swarm API Endpoints
     # -----------------------------------------------------------------------
+
+    @app.get("/api/swarm/status")
+    async def swarm_status():
+        """Get swarm bot status."""
+        from src.swarm.manager import get_swarm_manager
+        manager = get_swarm_manager()
+        if not manager:
+            return {"enabled": False, "bots": {}}
+        status = manager.get_status()
+        return status
+
+    @app.post("/api/swarm/sync")
+    async def swarm_trigger_sync():
+        """Trigger a manual daily sync-up."""
+        from src.swarm.manager import get_swarm_manager
+        manager = get_swarm_manager()
+        if not manager:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Swarm not running"},
+            )
+        result = await manager.trigger_sync()
+        return result
+
+    @app.post("/api/swarm/ask")
+    async def swarm_ask_bot(body: dict):
+        """Ask a specific swarm bot a question."""
+        from src.swarm.manager import get_swarm_manager
+        manager = get_swarm_manager()
+        if not manager:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Swarm not running"},
+            )
+        bot_role = body.get("bot", "research")
+        message = body.get("message", "")
+        context = body.get("context", "API query")
+        response = await manager.ask_bot(bot_role, message, context)
+        return {"bot": bot_role, "response": response}
 
     # -----------------------------------------------------------------------
     # WebSocket Endpoint
@@ -469,9 +508,24 @@ async def start_gateway(host: str = "127.0.0.1", port: int = 18789):
         except Exception as e:
             logger.warning(f"Failed to start Discord: {e}")
 
+    # Start the swarm if enabled
+    swarm_manager = None
+    if getattr(settings, "swarm", None) and settings.swarm.enabled:
+        try:
+            from src.swarm.manager import SwarmConfig, SwarmManager
+            swarm_config = SwarmConfig(settings)
+            swarm_config.load_from_dict(settings.swarm.model_dump())
+            swarm_manager = SwarmManager(swarm_config)
+            tasks.append(asyncio.create_task(swarm_manager.start()))
+            logger.info("🐝 Swarm bots starting...")
+        except Exception as e:
+            logger.warning(f"Failed to start Swarm: {e}")
+
     # Run the server
     await server.serve()
 
     # Cleanup
+    if swarm_manager:
+        await swarm_manager.stop()
     for task in tasks:
         task.cancel()
