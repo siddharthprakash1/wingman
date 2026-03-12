@@ -36,5 +36,5 @@ htmlcov/
 
 # Runtime data
 projects/
-config/
+/config/
 reproduce_output/

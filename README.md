@@ -32,6 +32,14 @@ A production-ready, self-hosted AI assistant with advanced features: multi-chann
 - **Structured Logging**: JSON logs with search, Rich console output, log rotation
 - **Testing Framework**: AgentTester with pytest fixtures for unit and integration tests
 
+### 🐝 Discord Bot Swarm
+- **5 Specialized Bots**: Scout (Research), Builder (Engineer), Scribe (Writer), Analyst (Data), Chief (Coordinator)
+- **Daily Sync-Ups**: Automated meetings where bots discuss findings, score ideas, and decide on projects
+- **Shared Memory**: Bots write to shared directories — research/, projects/, docs/, analysis/, decisions/
+- **Idea Scoring**: FINE framework (Feasibility, Impact, Novelty, Effort) with 1-10 scoring and go/no-go decisions
+- **Auto-Restart**: Exponential backoff on crashes, runs 24/7 on your old laptop
+- **Gateway Integration**: REST API endpoints + CLI commands to monitor and control the swarm
+
 ## 🏗️ Architecture
 
 ```
@@ -283,6 +291,94 @@ test_cases = [
 results = await tester.run_test_suite(test_cases, session=session)
 summary = tester.get_summary()
 print(f"Pass rate: {summary['pass_rate']:.1%}")
+```
+
+## 🐝 Discord Bot Swarm
+
+Run a team of 5 specialized AI bots on Discord that collaborate, hold daily meetings, and build projects together.
+
+### Quick Start
+
+```bash
+# 1. Set up the swarm (interactive wizard)
+wingman swarm setup
+
+# 2. Start the swarm (runs 24/7)
+wingman swarm start
+
+# 3. Or start everything together (gateway + swarm)
+wingman gateway
+```
+
+### The Bots
+
+| Bot | Role | What It Does |
+|-----|------|-------------|
+| 🔬 Scout | Research | Finds trends, papers, tech news, and project ideas |
+| 💻 Builder | Engineer | Writes code, creates prototypes, reviews architecture |
+| 📝 Scribe | Writer | Documentation, blog posts, reports, and summaries |
+| 📊 Analyst | Data | Evaluates ideas using FINE scoring (1-10 per category) |
+| 🧠 Chief | Coordinator | Runs daily sync-ups, makes go/no-go decisions |
+
+### Daily Sync-Up Protocol
+
+Every day at the configured time (default 9:00 AM), the bots hold a structured meeting:
+
+1. **Chief** opens the meeting
+2. **Scout** reports latest research and trend findings
+3. **Builder** shares technical assessments and prototypes
+4. **Scribe** summarizes key themes
+5. **Analyst** scores each idea: Feasibility + Impact + Novelty + Effort (0-40 scale)
+6. **Chief** makes go/no-go decisions (≥ 7.0 average = GO)
+7. **Scribe** writes the meeting summary to `~/.wingman/swarm/syncs/`
+
+### CLI Commands
+
+```bash
+wingman swarm setup     # Interactive token setup wizard
+wingman swarm start     # Launch all bots (24/7 mode)
+wingman swarm status    # Check bot configuration and status
+wingman swarm sync      # Manually trigger a sync-up meeting
+wingman swarm ask research -m "What's trending in AI agents?"
+```
+
+### REST API (when gateway is running)
+
+```bash
+# Check swarm status
+curl http://localhost:18789/api/swarm/status
+
+# Trigger a sync
+curl -X POST http://localhost:18789/api/swarm/sync
+
+# Ask a bot
+curl -X POST http://localhost:18789/api/swarm/ask \
+  -H "Content-Type: application/json" \
+  -d '{"bot": "research", "message": "What are the latest AI trends?"}'
+```
+
+### Discord Setup
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Create **5 applications** (one per bot)
+3. For each: Bot → Reset Token → copy it
+4. Enable **Message Content Intent** and **Server Members Intent**
+5. Invite all 5 bots to your server with `applications.commands` + `bot` scopes
+6. Create a `#daily-sync` channel and copy its ID
+7. Run `wingman swarm setup` and paste the tokens
+
+### Shared Memory
+
+All bots write to `~/.wingman/swarm/`:
+
+```
+~/.wingman/swarm/
+├── research/      # Scout's findings (trends, papers, ideas)
+├── projects/      # Builder's code and prototypes
+├── docs/          # Scribe's documentation and reports
+├── analysis/      # Analyst's scoring and evaluations
+├── decisions/     # Chief's go/no-go decisions
+└── syncs/         # Daily meeting summaries (sync-YYYY-MM-DD.md)
 ```
 
 ## 🔒 Security Features
