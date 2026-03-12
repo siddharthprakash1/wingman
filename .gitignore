@@ -10,6 +10,13 @@ __pycache__/
 config.json
 ~/.wingman/
 
+# Logs (may contain sensitive info)
+*.log
+overnight.log
+
+# Temporary/test files  
+noob.html
+
 # IDE
 .idea/
 .vscode/
