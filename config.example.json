@@ -65,5 +65,23 @@
   "gateway": {
     "port": 18789,
     "host": "127.0.0.1"
+  },
+  "swarm": {
+    "enabled": false,
+    "sync_channel_id": 0,
+    "sync_time": "09:00",
+    "swarm_dir": "~/.wingman/swarm",
+    "tokens": {
+      "research": "",
+      "engineer": "",
+      "writer": "",
+      "data": "",
+      "coordinator": "",
+      "trend_watcher": "",
+      "architect": "",
+      "tester": "",
+      "devops": "",
+      "innovator": ""
+    }
   }
 }
