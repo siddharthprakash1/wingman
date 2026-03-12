@@ -173,6 +173,31 @@ class GatewayConfig(BaseModel):
     host: str = "127.0.0.1"
 
 
+class SwarmBotTokens(BaseModel):
+    """Discord bot tokens for each swarm bot."""
+    # Original core team
+    research: str = ""
+    engineer: str = ""
+    writer: str = ""
+    data: str = ""
+    coordinator: str = ""
+    # New specialized agents
+    trend_watcher: str = ""
+    architect: str = ""
+    tester: str = ""
+    devops: str = ""
+    innovator: str = ""
+
+
+class SwarmConfig(BaseModel):
+    """Configuration for the multi-bot Discord swarm."""
+    enabled: bool = False
+    sync_channel_id: int = 0  # Discord channel ID for daily sync-ups
+    sync_time: str = "09:00"  # HH:MM in 24h format
+    swarm_dir: str = str(Path.home() / ".wingman" / "swarm")
+    tokens: SwarmBotTokens = Field(default_factory=SwarmBotTokens)
+
+
 class Settings(BaseModel):
     """Root configuration model for OpenClaw Mine."""
 
@@ -181,6 +206,7 @@ class Settings(BaseModel):
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    swarm: SwarmConfig = Field(default_factory=SwarmConfig)
 
     @property
     def workspace_path(self) -> Path:
