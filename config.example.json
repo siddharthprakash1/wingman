@@ -1,11 +1,18 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "~/.openclaw_mine/workspace",
-      "model": "ollama/kimi-k2.5:cloud",
+      "workspace": "~/.wingman/workspace",
+      "model": "openai/gpt-4o-mini",
       "max_tokens": 8192,
       "temperature": 0.7,
-      "max_tool_iterations": 25
+      "max_tool_iterations": 25,
+      "workspace_sandboxed": true
+    },
+    "rag": {
+      "auto_retrieve": true,
+      "top_k": 3,
+      "min_score": 0.3,
+      "collection": "documents"
     }
   },
   "providers": {
@@ -25,42 +32,40 @@
     "openrouter": {
       "api_key": "",
       "api_base": "https://openrouter.ai/api/v1"
+    },
+    "openai": {
+      "api_key": "",
+      "api_base": "https://api.openai.com/v1",
+      "model": "gpt-4o"
+    },
+    "openai_chat": {
+      "api_key": "",
+      "api_base": "https://api.openai.com/v1",
+      "model": "gpt-4o-mini"
+    },
+    "groq": {
+      "api_key": "",
+      "api_base": "https://api.groq.com/openai/v1",
+      "model": "llama-3.3-70b-versatile"
     }
   },
   "channels": {
-    "telegram": {
-      "enabled": false,
-      "token": "",
-      "allow_from": []
-    },
-    "discord": {
-      "enabled": false,
-      "token": "",
-      "allow_from": []
-    },
-    "webchat": {
-      "enabled": true,
-      "port": 8080
-    }
+    "telegram": { "enabled": false, "token": "", "allow_from": [] },
+    "discord":  { "enabled": false, "token": "", "allow_from": [] },
+    "webchat":  { "enabled": true, "port": 8080 }
   },
   "tools": {
     "web": {
-      "search": {
-        "provider": "duckduckgo",
-        "api_key": "",
-        "max_results": 5
-      }
+      "search": { "provider": "duckduckgo", "api_key": "", "max_results": 5 }
     },
     "shell": {
       "enabled": true,
-      "allowed_commands": ["*"]
+      "allowed_commands": ["*"],
+      "workspace_restricted": true,
+      "strict_whitelist": false
     },
-    "browser": {
-      "enabled": true
-    },
-    "cron": {
-      "enabled": true
-    }
+    "browser": { "enabled": true },
+    "cron":    { "enabled": true }
   },
   "gateway": {
     "port": 18789,
@@ -72,16 +77,23 @@
     "sync_time": "09:00",
     "swarm_dir": "~/.wingman/swarm",
     "tokens": {
-      "research": "",
-      "engineer": "",
-      "writer": "",
-      "data": "",
-      "coordinator": "",
-      "trend_watcher": "",
-      "architect": "",
-      "tester": "",
-      "devops": "",
-      "innovator": ""
+      "research": "", "engineer": "", "writer": "", "data": "",
+      "coordinator": "", "trend_watcher": "", "architect": "",
+      "tester": "", "devops": "", "innovator": ""
     }
+  },
+  "overnight": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "cycle_minutes": 60,
+    "max_tokens_per_stage": 2048,
+    "themes": [
+      "AI agents and tooling",
+      "Developer productivity",
+      "Open source LLM releases",
+      "Applied ML engineering"
+    ],
+    "post_to_discord": false,
+    "discord_channel_id": 0
   }
 }
