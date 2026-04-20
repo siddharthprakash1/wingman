@@ -14,8 +14,9 @@ async def test_ingest_pdf():
     
     from src.tools.documents import ingest_document
     
-    # Use the OpenClaw PDF in the project
-    pdf_path = Path("OpenClaw Architecture and Code-Level Overview.pdf")
+    # Use the architecture PDF in docs/ (resolved relative to repo root)
+    repo_root = Path(__file__).resolve().parents[2]
+    pdf_path = repo_root / "docs" / "architecture-overview.pdf"
     
     if not pdf_path.exists():
         print(f"⚠️  PDF not found at: {pdf_path}")
