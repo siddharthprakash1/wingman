@@ -69,16 +69,28 @@ class VectorStore:
         return self._collections[name]
     
     def _save_collection(self, name: str) -> None:
-        """Save a collection to disk."""
+        """Save a collection to disk. Non-serializable metadata falls back to repr."""
         if name not in self._collections:
             return
-        
+
         path = self._get_collection_path(name)
+
+        def _safe_default(obj: Any) -> str:
+            # Last-resort fallback: log what went unserialized and stringify it
+            logger.warning(
+                "Non-serializable value in collection %s: %s (type=%s)",
+                name, repr(obj)[:100], type(obj).__name__,
+            )
+            return repr(obj)
+
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
         try:
-            with open(path, 'w') as f:
-                json.dump(self._collections[name], f, default=str)
+            with open(tmp_path, 'w') as f:
+                json.dump(self._collections[name], f, default=_safe_default)
+            tmp_path.replace(path)  # atomic
         except Exception as e:
             logger.error(f"Failed to save collection {name}: {e}")
+            tmp_path.unlink(missing_ok=True)
             raise
     
     def add(
