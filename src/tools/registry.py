@@ -139,7 +139,7 @@ def create_default_registry() -> ToolRegistry:
     from src.tools.filesystem import register_filesystem_tools
     from src.tools.web_search import register_web_search_tools
     from src.tools.cron import register_cron_tools
-    # New tools
+    # Platform tools
     from src.tools.macos import register_macos_tools
     from src.tools.media import register_media_tools
     from src.tools.desktop import register_desktop_tools
@@ -151,23 +151,29 @@ def create_default_registry() -> ToolRegistry:
     from src.tools.documents import register_document_tools
     # Multi-agent communication tools
     from src.tools.sessions import register_session_tools
+    # Developer tools
+    from src.tools.git_ops import register_git_tools
+    from src.tools.http_client import register_http_client_tools
+    from src.tools.sqlite_ops import register_sqlite_tools
+    from src.tools.python_exec import register_python_exec_tools
 
     registry = ToolRegistry()
     register_shell_tools(registry)
     register_filesystem_tools(registry)
     register_web_search_tools(registry)
     register_cron_tools(registry)
-    # Register new tools
     register_macos_tools(registry)
     register_media_tools(registry)
     register_desktop_tools(registry)
     register_package_tools(registry)
-    # Register AI-powered tools
     register_extraction_tools(registry)
     register_browser_use_tools(registry)
-    # Register document/knowledge base tools
     register_document_tools(registry)
-    # Register multi-agent session tools
     register_session_tools(registry)
+    # Developer tools
+    register_git_tools(registry)
+    register_http_client_tools(registry)
+    register_sqlite_tools(registry)
+    register_python_exec_tools(registry)
 
     return registry
