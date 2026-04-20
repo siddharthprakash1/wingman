@@ -20,6 +20,7 @@ from typing import Any
 from src.config.settings import Settings, get_settings
 from src.providers.base import LLMProvider, LLMResponse, Message, ToolDefinition
 from src.providers.gemini import GeminiProvider
+from src.providers.groq import GroqProvider
 from src.providers.kimi import KimiProvider
 from src.providers.ollama import OllamaProvider
 from src.providers.openai import OpenAIProvider
@@ -87,7 +88,7 @@ class ProviderManager:
                 else "",
             )
 
-        # OpenAI Chat (Weak/Cheap model)
+        # OpenAI Chat (cost-effective model, defaults to gpt-4o-mini)
         if cfg.openai_chat.api_key:
             self._providers["openai_chat"] = OpenAIProvider(
                 api_key=cfg.openai_chat.api_key,
@@ -95,6 +96,26 @@ class ProviderManager:
                 model=self.settings.get_model_name()
                 if self.settings.get_model_provider() == "openai_chat"
                 else cfg.openai_chat.model,
+            )
+
+        # OpenAI (flagship model, defaults to gpt-4o)
+        if cfg.openai.api_key:
+            self._providers["openai"] = OpenAIProvider(
+                api_key=cfg.openai.api_key,
+                api_base=cfg.openai.api_base,
+                model=self.settings.get_model_name()
+                if self.settings.get_model_provider() == "openai"
+                else cfg.openai.model,
+            )
+
+        # Groq (OpenAI-compatible, very fast)
+        if cfg.groq.api_key:
+            self._providers["groq"] = GroqProvider(
+                api_key=cfg.groq.api_key,
+                api_base=cfg.groq.api_base,
+                model=self.settings.get_model_name()
+                if self.settings.get_model_provider() == "groq"
+                else cfg.groq.model,
             )
 
         # Initialize provider order for round-robin
@@ -126,7 +147,7 @@ class ProviderManager:
             return self._providers[default_provider]
 
         # Fallback priority
-        for name in ["kimi", "gemini", "ollama", "openai", "openai_chat", "openrouter"]:
+        for name in ["kimi", "gemini", "ollama", "openai", "openai_chat", "groq", "openrouter"]:
             if name in self._providers:
                 logger.info(f"Falling back to {name} provider")
                 return self._providers[name]
@@ -138,7 +159,8 @@ class ProviderManager:
             "  2. Set providers.gemini.api_key\n"
             "  3. Install Ollama and run: ollama pull deepseek-r1:14b\n"
             "  4. Set providers.openai.api_key\n"
-            "  5. Set providers.openrouter.api_key"
+            "  5. Set providers.groq.api_key\n"
+            "  6. Set providers.openrouter.api_key"
         )
 
     def get_next_round_robin_provider(self) -> LLMProvider | None:
@@ -191,7 +213,8 @@ class ProviderManager:
         """
         default_provider = self.settings.get_model_provider()
         priority = [default_provider] + [
-            p for p in ["gemini", "ollama", "openai", "openrouter"] if p != default_provider
+            p for p in ["gemini", "ollama", "openai", "openai_chat", "groq", "kimi", "openrouter"]
+            if p != default_provider
         ]
 
         async def check_provider(name: str) -> tuple[str, bool]:
