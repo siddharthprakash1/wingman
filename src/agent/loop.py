@@ -12,16 +12,15 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
+from src.agent.prompt import PromptBuilder
 from src.config.settings import Settings, get_settings
 from src.memory.manager import MemoryManager
 from src.memory.transcript import TranscriptLogger
-from src.providers.base import LLMResponse, Message, ToolCall
+from src.providers.base import Message
 from src.providers.manager import ProviderManager
-from src.tools.registry import ToolRegistry, create_default_registry
-from src.agent.prompt import PromptBuilder
+from src.tools.registry import create_default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +125,50 @@ class AgentSession:
             content=f"{system_prompt}\n\n---\n\n{tool_prompt}",
         )
 
+    def _maybe_build_rag_message(self, user_input: str) -> Message | None:
+        """
+        Retrieve top-k snippets from the vector store and return them as a
+        system message. Returns None if RAG is disabled, the store is empty,
+        no results clear the score threshold, or retrieval errors out.
+        """
+        rag_cfg = self.settings.agents.rag
+        if not rag_cfg.auto_retrieve:
+            return None
+
+        try:
+            from src.retrieval.vector_store import get_vector_store
+
+            store = get_vector_store()
+            if store.count(collection=rag_cfg.collection) == 0:
+                return None
+
+            hits = store.search(
+                query=user_input,
+                n_results=rag_cfg.top_k,
+                collection=rag_cfg.collection,
+            )
+        except Exception as e:
+            logger.debug(f"RAG retrieval skipped: {type(e).__name__}: {e}")
+            return None
+
+        hits = [h for h in hits if h.get("score", 0) >= rag_cfg.min_score]
+        if not hits:
+            return None
+
+        blocks = []
+        for i, hit in enumerate(hits, start=1):
+            source = hit.get("metadata", {}).get("source") or hit.get("id", "")
+            score = hit.get("score", 0)
+            text = hit.get("text", "").strip()
+            blocks.append(f"[{i}] source={source} score={score:.2f}\n{text}")
+
+        content = (
+            "Relevant context from the knowledge base (use if helpful, "
+            "otherwise ignore):\n\n" + "\n\n---\n\n".join(blocks)
+        )
+        logger.info(f"RAG injected {len(hits)} snippet(s) for query: {user_input[:60]}")
+        return Message(role="system", content=content)
+
     async def process_message(self, user_input: str, channel: str = "cli") -> str:
         """
         Process a user message through the full agent loop.
@@ -154,6 +197,12 @@ class AgentSession:
         # Prepare full message array: system + history
         full_messages = [system_msg] + self.messages
 
+        # Optional: inject retrieved context from the vector store (RAG)
+        rag_msg = self._maybe_build_rag_message(user_input)
+        if rag_msg is not None:
+            # Insert right after the system message so it's treated as priority context
+            full_messages.insert(1, rag_msg)
+
         # Get tool definitions
         tool_defs = self.tool_registry.get_definitions()
 
@@ -163,7 +212,7 @@ class AgentSession:
 
         while iteration < max_iterations:
             iteration += 1
-            print(f"   🔄 Agent loop iteration {iteration}/{max_iterations}")
+            logger.info(f"Agent loop iteration {iteration}/{max_iterations}")
 
             try:
                 response = await self.provider_manager.chat(
@@ -174,15 +223,14 @@ class AgentSession:
                 )
             except Exception as e:
                 error_msg = f"LLM call failed: {e}"
-                print(f"   ❌ LLM Error: {error_msg}")
                 logger.error(error_msg)
                 self.transcript.log_error(error_msg)
                 return f"❌ {error_msg}"
 
             # Check for tool calls
             if response.has_tool_calls:
-                print(f"   🔧 LLM wants to use {len(response.tool_calls)} tool(s)")
-                
+                logger.info(f"LLM requested {len(response.tool_calls)} tool call(s)")
+
                 # Execute each tool call
                 assistant_msg = Message(
                     role="assistant",
@@ -193,14 +241,12 @@ class AgentSession:
                 full_messages.append(assistant_msg)
 
                 for tool_call in response.tool_calls:
-                    print(f"   🛠️  Calling tool: {tool_call.name}")
-                    print(f"      Args: {str(tool_call.arguments)[:100]}...")
-                    self.transcript.log_tool_call(tool_call.name, tool_call.arguments)
                     logger.info(f"Tool call: {tool_call.name}({tool_call.arguments})")
+                    self.transcript.log_tool_call(tool_call.name, tool_call.arguments)
 
                     # Execute the tool
                     result = await self.tool_registry.execute(tool_call)
-                    print(f"   📊 Tool result: {result[:150]}{'...' if len(result) > 150 else ''}")
+                    logger.debug(f"Tool result ({tool_call.name}): {result[:200]}")
                     self.transcript.log_tool_result(tool_call.name, result[:500])
 
                     # Add tool result to messages

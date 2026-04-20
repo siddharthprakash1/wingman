@@ -703,16 +703,27 @@ class SwarmBot:
     async def send_to_channel(self, channel_id: int, content: str) -> None:
         """Send a message to a specific Discord channel."""
         if not self._bot:
+            logger.warning(f"send_to_channel: {self.personality.name} has no _bot instance")
             return
         channel = self._bot.get_channel(channel_id)
-        if channel:
-            # Split long messages
+        if channel is None:
+            try:
+                channel = await self._bot.fetch_channel(channel_id)
+            except Exception as e:
+                logger.error(
+                    f"send_to_channel: {self.personality.name} could not access channel {channel_id}: {e}"
+                )
+                return
+        try:
             if len(content) <= 2000:
                 await channel.send(content)
             else:
                 chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
                 for chunk in chunks:
                     await channel.send(chunk)
+            logger.info(f"send_to_channel: {self.personality.name} posted {len(content)} chars to {channel_id}")
+        except Exception as e:
+            logger.error(f"send_to_channel: {self.personality.name} send failed: {e}")
 
     async def send_embed_to_channel(
         self, channel_id: int, title: str, description: str, fields: dict[str, str] | None = None

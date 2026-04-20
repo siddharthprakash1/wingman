@@ -13,6 +13,7 @@ config.json
 # Logs (may contain sensitive info)
 *.log
 overnight.log
+overnight.log.*
 
 # Temporary/test files  
 noob.html

@@ -1,117 +1,112 @@
-# Bugs and Issues Found During Code Review
+# Bugs and Issues — status as of 2026-04-20
+
+Most of the "critical" items below were already fixed in the code by the
+time of review. Status legend: ✅ resolved, ⏳ open, 🟡 partial/by-design.
 
 ## Critical Bugs
 
-### 1. Vector Store Division by Zero
+### 1. Vector Store Division by Zero ✅
 **File**: `src/retrieval/vector_store.py`
-**Issue**: `_cosine_similarity()` can divide by zero if either vector has zero norm
-**Fix**: Add zero-check
+`_cosine_similarity()` guards `norm_a == 0 or norm_b == 0 → 0.0`.
 
-### 2. Empty File Handling in Document Loader  
+### 2. Empty File Handling in Document Loader ✅
 **File**: `src/ingestion/loader.py`
-**Issue**: No check for empty files which will create empty chunks
-**Fix**: Add empty content check
+Empty content is short-circuited before chunking.
 
-### 3. Session Memory Leak
+### 3. Session Memory Leak ✅
 **File**: `src/gateway/session.py`
-**Issue**: Sessions accumulate in memory with no cleanup mechanism
-**Fix**: Add session timeout/cleanup
+Sessions have explicit cleanup via the session manager.
 
-### 4. Missing File Extension Check in Upload
+### 4. Missing File Extension Check in Upload ✅
 **File**: `src/gateway/server.py`
-**Issue**: File upload doesn't validate file extension before processing
-**Fix**: Add extension validation
+Extension is validated on upload.
 
-### 5. WebSocket Connection Not Properly Closed
+### 5. WebSocket Connection Not Properly Closed 🟡
 **File**: `src/gateway/server.py`
-**Issue**: `process_file_with_progress()` defined inside loop but connection not checked
-**Fix**: Move function definition outside, add connection check
+`process_file_with_progress()` is still defined inside the WS handler; it
+closes over `websocket` + loop-local state so moving it out requires
+explicit param threading. Not a functional bug — left as a style nit.
 
-### 6. Provider Health Check Can Block Event Loop
+### 6. Provider Health Check Can Block Event Loop ✅
 **File**: `src/providers/manager.py`
-**Issue**: Iterating through providers for health check is synchronous in async context
-**Fix**: Use asyncio.gather for parallel health checks
+Health checks use `asyncio.gather` across providers.
 
-### 7. Large File Memory Issue
+### 7. Large File Memory Issue ✅
 **File**: `src/ingestion/loader.py`
-**Issue**: Entire file content loaded into memory; large PDFs can cause OOM
-**Fix**: Add file size limit check
+File size is capped; larger files are rejected early.
 
-### 8. Embeddings Model Load Blocks Event Loop
+### 8. Embeddings Model Load Blocks Event Loop ✅
 **File**: `src/retrieval/embeddings.py`
-**Issue**: `_load_model()` is synchronous but called from async context
-**Fix**: Use `asyncio.to_thread()` for model loading
+Model load is wrapped in `asyncio.to_thread()` / called once at startup.
 
-### 9. Shell Command Injection Risk
+### 9. Shell Command Injection Risk ✅
 **File**: `src/tools/shell.py`
-**Issue**: No validation on shell commands - potential security risk
-**Fix**: Add command whitelist/blacklist option
+Blocked-command list + optional `strict_whitelist` mode (config:
+`tools.shell.strict_whitelist`). When enabled and `"*"` is not in the
+allowlist, only first-word matches in `allowed_commands` are permitted.
 
-### 10. Tool Execution Missing Timeout
+### 10. Tool Execution Missing Timeout ✅
 **File**: `src/tools/registry.py`
-**Issue**: Tool execution has no timeout, can hang indefinitely
-**Fix**: Add timeout wrapper
+5-minute default timeout via `asyncio.wait_for(..., timeout=TOOL_TIMEOUT)`.
 
 ## Medium Priority
 
-### 11. Web Search Error Handling
+### 11. Web Search Error Handling ✅
 **File**: `src/tools/web_search.py`
-**Issue**: DuckDuckGo rate limits not handled
-**Fix**: Add retry logic with backoff
+3-attempt retry with exponential backoff.
 
-### 12. Missing httpx Dependency Check
+### 12. Missing httpx Dependency Check ⏳
 **File**: `src/tools/web_search.py`
-**Issue**: httpx import can fail but not handled gracefully
-**Fix**: Add try-except for import
+Imports still raise if `ddgs`/`duckduckgo_search` are missing. Low-priority
+— both extras are in `pyproject.toml`.
 
-### 13. File Path Traversal
+### 13. File Path Traversal ✅
 **File**: `src/tools/filesystem.py`
-**Issue**: No check for path traversal attacks (../../etc/passwd)
-**Fix**: Add path validation
+All paths validated via `src/security/` workspace sandboxing.
 
-### 14. Transcript Logger File Lock
+### 14. Transcript Logger File Lock ✅
 **File**: `src/memory/transcript.py`
-**Issue**: No file locking, concurrent writes can corrupt log
-**Fix**: Add file locking or queue writes
+Single-writer async queue serializes writes.
 
-### 15. JSON Serialization Error
+### 15. JSON Serialization Error ✅
 **File**: `src/retrieval/vector_store.py`
-**Issue**: `_save_collection()` can fail with non-serializable metadata
-**Fix**: Add JSON serialization wrapper
+`_save_collection` now uses atomic tmp-file writes + a `default=_safe_default`
+fallback that logs the offending value and stringifies it.
 
-### 16. Webchat Context Injection Timing
+### 16. Webchat Context Injection Timing ⏳
 **File**: `src/channels/webchat.py`
-**Issue**: 5-minute window for context injection is arbitrary and not configurable
-**Fix**: Make configurable
+Still a hard-coded 5-minute window. Open.
 
-### 17. Missing Error Response for WebSocket
+### 17. Missing Error Response for WebSocket ⏳
 **File**: `src/gateway/server.py`
-**Issue**: Some exceptions don't send error to client
-**Fix**: Add comprehensive error handling
+Some exception paths still don't send a structured error to the client.
 
 ## Low Priority (Improvements)
 
-### 18. Hard-coded Paths
-**File**: Various
-**Issue**: `~/.wingman` path hard-coded in multiple places
-**Fix**: Centralize path configuration
+### 18. Hard-coded Paths ✅
+**File**: various
+Centralized in [src/config/paths.py](src/config/paths.py). New code should
+import from there instead of rebuilding `Path.home() / ".wingman" / ...`.
 
-### 19. Logging Inconsistency
-**File**: Various
-**Issue**: Some modules use print(), some use logger
-**Fix**: Standardize on logger
+### 19. Logging Inconsistency 🟡
+**File**: various
+Agent loop hot path now uses `logger`. Some `print()` calls remain in
+non-hot paths (swarm scripts, legacy tools). Finish opportunistically.
 
-### 20. Missing Type Hints
-**File**: Various
-**Issue**: Some functions missing return type hints
-**Fix**: Add type hints
+### 20. Missing Type Hints ⏳
+Ongoing. Picked up opportunistically during other edits.
 
-### 21. Duplicate Code in Providers
+### 21. Duplicate Code in Providers ✅
 **File**: `src/providers/*.py`
-**Issue**: Message conversion logic duplicated across providers
-**Fix**: Extract to base class
+Shared `OpenAICompatibleProvider` base class at
+[src/providers/_openai_compat.py](src/providers/_openai_compat.py). New
+Groq provider builds on it in ~12 lines. Existing `openai.py` / `kimi.py` /
+`openrouter.py` still have their own implementations — fine to leave, but
+migrating them is now a mechanical refactor.
 
-### 22. No Connection Pooling
-**File**: `src/providers/openai.py`
-**Issue**: HTTP client created per provider, no pooling
-**Fix**: Consider shared connection pool
+### 22. No Connection Pooling ✅ (for new code)
+**File**: `src/providers/_http.py`
+Single shared `httpx.AsyncClient` singleton (50 max / 20 keepalive
+connections, 120s timeout). Groq + `http_request` tool use it. Legacy
+providers (openai.py, kimi.py, ollama.py) still own their clients — not a
+bug, just an opportunity to consolidate later.

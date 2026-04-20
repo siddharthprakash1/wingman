@@ -54,29 +54,38 @@ def _is_workspace_restricted() -> bool:
 def _validate_command(command: str, session_id: str | None = None) -> tuple[bool, str]:
     """Validate shell command for security issues."""
     settings = get_settings()
-    
+
+    # Strict whitelist mode: only first-words in allowed_commands may run
+    # (wildcard "*" means "any", which is the default)
+    shell_cfg = settings.tools.shell
+    first_word = command.split()[0] if command.split() else ""
+    if getattr(shell_cfg, "strict_whitelist", False):
+        allowed = shell_cfg.allowed_commands or []
+        if "*" not in allowed and first_word not in allowed:
+            return False, (
+                f"Strict whitelist blocked command '{first_word}'. "
+                f"Allowed: {allowed}"
+            )
+
     # Check blocked commands from config
-    blocked_commands = settings.tools.shell.blocked_commands
+    blocked_commands = shell_cfg.blocked_commands
     command_lower = command.lower()
-    
+
     for blocked in blocked_commands:
         if blocked in command_lower:
             return False, f"Blocked command pattern: {blocked}"
-    
+
     # Check for dangerous patterns
     for pattern in DANGEROUS_PATTERNS:
         if pattern in command_lower:
             return False, f"Dangerous command pattern detected: {pattern}"
-    
-    # Check for command injection attempts
+
+    # Log shell operators + high-risk commands (don't block)
     if any(char in command for char in [';', '&&', '||', '|', '`', '$(']):
         logger.warning(f"Command contains shell operators: {command[:100]}")
-    
-    # Warn about high-risk commands (don't block, but log)
-    first_word = command.split()[0] if command.split() else ''
     if first_word in HIGH_RISK_COMMANDS:
         logger.warning(f"High-risk command executed: {first_word}")
-    
+
     return True, ""
 
 
