@@ -65,5 +65,5 @@ The system has **three orthogonal axes** that new contributors conflate. Keep th
 - **Async everywhere**: I/O uses async/await. pytest-asyncio is auto-mode, so no `@pytest.mark.asyncio` decorator is needed.
 - **Config layering**: `~/.wingman/config.json` first, `.env` overrides second. Don't hardcode paths; read from `src/config/settings.py` or `src/config/paths.py`.
 - **Secrets live in `.env`, not in chat or git.** The repo's `.env` is gitignored. If a secret ends up in a transcript or log, treat it as burned and rotate.
-- **Reference material, not source of truth**: `OpenClaw Architecture and Code-Level Overview.pdf`, `IMPLEMENTATION_SUMMARY.md`, `BUGS_FOUND.md` — useful context but the code has moved past several items (most of the "critical" bugs in `BUGS_FOUND.md` are fixed).
+- **Reference material, not source of truth**: [docs/architecture-overview.pdf](docs/architecture-overview.pdf), [docs/implementation-summary.md](docs/implementation-summary.md), [docs/bugs-found.md](docs/bugs-found.md) — useful context but the code has moved past several items (most of the "critical" bugs in `docs/bugs-found.md` are fixed).
 - **Commits** follow Conventional Commits per [CONTRIBUTING.md](CONTRIBUTING.md) (`feat(scope):`, `fix(scope):`, `docs:`, etc.).
